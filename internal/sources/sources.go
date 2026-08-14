@@ -5,6 +5,7 @@ import (
 	"github.com/ppowo/rfs/internal/sources/film"
 	"github.com/ppowo/rfs/internal/sources/meltzer"
 	"github.com/ppowo/rfs/internal/sources/ptg"
+	"github.com/ppowo/rfs/internal/sources/ptvjobs"
 	"github.com/ppowo/rfs/internal/sources/tildes"
 )
 
@@ -49,6 +50,16 @@ func All() []rfs.Source {
 				Link:        tildes.PageURL,
 			},
 			Flow: tildes.Flow{},
+		},
+		{
+			ID:  "ptv-remote-italy-jobs",
+			URL: ptvjobs.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "PTV Logistics - remote Italy jobs",
+				Description: "Open PTV Logistics positions remote-eligible for Italy (Remote - Italy).",
+				Link:        ptvjobs.PageURL,
+			},
+			Flow: ptvjobs.Flow{},
 		},
 	}
 }

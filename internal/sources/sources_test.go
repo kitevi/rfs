@@ -6,6 +6,7 @@ import (
 	"github.com/ppowo/rfs/internal/sources"
 	"github.com/ppowo/rfs/internal/sources/film"
 	"github.com/ppowo/rfs/internal/sources/ptg"
+	"github.com/ppowo/rfs/internal/sources/ptvjobs"
 	"github.com/ppowo/rfs/internal/sources/tildes"
 )
 
@@ -81,5 +82,30 @@ func TestAllIncludesTildesCompSource(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("sources.All does not include the tildes-comp source")
+	}
+}
+
+func TestAllIncludesPTVRemoteItalyJobsSource(t *testing.T) {
+	var found bool
+	for _, source := range sources.All() {
+		if source.ID != "ptv-remote-italy-jobs" {
+			continue
+		}
+		found = true
+		if source.URL != ptvjobs.PageURL {
+			t.Fatalf("ptv-remote-italy-jobs source URL = %q, want %q", source.URL, ptvjobs.PageURL)
+		}
+		if source.Meta.Title != "PTV Logistics - remote Italy jobs" {
+			t.Fatalf("ptv-remote-italy-jobs source title = %q", source.Meta.Title)
+		}
+		if source.Meta.Link != ptvjobs.PageURL {
+			t.Fatalf("ptv-remote-italy-jobs source link = %q, want %q", source.Meta.Link, ptvjobs.PageURL)
+		}
+		if source.Flow.Version() != ptvjobs.ExtractVersion {
+			t.Fatalf("ptv-remote-italy-jobs source flow version = %d, want %d", source.Flow.Version(), ptvjobs.ExtractVersion)
+		}
+	}
+	if !found {
+		t.Fatal("sources.All does not include the ptv-remote-italy-jobs source")
 	}
 }

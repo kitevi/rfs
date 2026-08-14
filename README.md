@@ -19,6 +19,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/film.html` — HTML view of the `/film/` feed
 - `/feeds/tildes-comp.xml` — most-upvoted `~comp` topics on Tildes over the past year
 - `/feeds/tildes-comp.html` — HTML view of the Tildes feed
+- `/feeds/ptv-remote-italy-jobs.xml` — open PTV Logistics positions remote-eligible for Italy
+- `/feeds/ptv-remote-italy-jobs.html` — HTML view of the PTV feed
 
 State is stored in a SQLite database under the OS user cache directory by default:
 
