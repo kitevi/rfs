@@ -19,6 +19,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/film.html` — HTML view of the `/film/` feed
 - `/feeds/tildes-comp.xml` — most-upvoted `~comp` topics on Tildes over the past year
 - `/feeds/tildes-comp.html` — HTML view of the Tildes feed
+- `/feeds/osmer-rain-trieste.xml` — OSMER coastal-zone (Z4) forecast sections that mention rain around Trieste
+- `/feeds/osmer-rain-trieste.html` — HTML view of the OSMER rain feed
 - `/feeds/ptv-remote-italy-jobs.xml` — open PTV Logistics positions remote-eligible for Italy
 - `/feeds/ptv-remote-italy-jobs.html` — HTML view of the PTV feed
 

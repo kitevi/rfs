@@ -1,9 +1,12 @@
 package sources
 
 import (
+	"time"
+
 	"github.com/ppowo/rfs/internal/rfs"
 	"github.com/ppowo/rfs/internal/sources/film"
 	"github.com/ppowo/rfs/internal/sources/meltzer"
+	"github.com/ppowo/rfs/internal/sources/osmer"
 	"github.com/ppowo/rfs/internal/sources/ptg"
 	"github.com/ppowo/rfs/internal/sources/ptvjobs"
 	"github.com/ppowo/rfs/internal/sources/tildes"
@@ -50,6 +53,17 @@ func All() []rfs.Source {
 				Link:        tildes.PageURL,
 			},
 			Flow: tildes.Flow{},
+		},
+		{
+			ID:       "osmer-rain-trieste",
+			URL:      osmer.PageURL,
+			Interval: 30 * time.Minute,
+			Meta: rfs.SourceMeta{
+				Title:       "OSMER FVG - rain around Trieste",
+				Description: "Coastal-zone OSMER forecasts (Z4, including Trieste) that explicitly mention rain, showers, precipitation, or thunderstorms.",
+				Link:        osmer.PageURL,
+			},
+			Flow: osmer.Flow{},
 		},
 		{
 			ID:  "ptv-remote-italy-jobs",

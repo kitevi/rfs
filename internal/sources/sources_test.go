@@ -2,9 +2,11 @@ package sources_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ppowo/rfs/internal/sources"
 	"github.com/ppowo/rfs/internal/sources/film"
+	"github.com/ppowo/rfs/internal/sources/osmer"
 	"github.com/ppowo/rfs/internal/sources/ptg"
 	"github.com/ppowo/rfs/internal/sources/ptvjobs"
 	"github.com/ppowo/rfs/internal/sources/tildes"
@@ -82,6 +84,37 @@ func TestAllIncludesTildesCompSource(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("sources.All does not include the tildes-comp source")
+	}
+}
+
+func TestAllIncludesOsmerRainTriesteSource(t *testing.T) {
+	var found bool
+	for _, source := range sources.All() {
+		if source.ID != "osmer-rain-trieste" {
+			continue
+		}
+		found = true
+		if source.URL != osmer.PageURL {
+			t.Fatalf("osmer-rain-trieste source URL = %q, want %q", source.URL, osmer.PageURL)
+		}
+		if source.Interval != 30*time.Minute {
+			t.Fatalf("osmer-rain-trieste interval = %v, want 30m", source.Interval)
+		}
+		if source.Meta.Title != "OSMER FVG - rain around Trieste" {
+			t.Fatalf("osmer-rain-trieste title = %q", source.Meta.Title)
+		}
+		if source.Meta.Description != "Coastal-zone OSMER forecasts (Z4, including Trieste) that explicitly mention rain, showers, precipitation, or thunderstorms." {
+			t.Fatalf("osmer-rain-trieste description = %q", source.Meta.Description)
+		}
+		if source.Meta.Link != osmer.PageURL {
+			t.Fatalf("osmer-rain-trieste link = %q", source.Meta.Link)
+		}
+		if source.Flow.Version() != osmer.ExtractVersion {
+			t.Fatalf("osmer-rain-trieste version = %d, want %d", source.Flow.Version(), osmer.ExtractVersion)
+		}
+	}
+	if !found {
+		t.Fatal("sources.All does not include the osmer-rain-trieste source")
 	}
 }
 
