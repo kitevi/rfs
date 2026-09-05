@@ -8,88 +8,104 @@ import (
 	"github.com/ppowo/rfs/internal/sources/ptg"
 )
 
-func TestFlowDropsLiveThreadAndKeepsSupersededThreads(t *testing.T) {
-	doc := parseHTML(t, `
-<html><body>
-<article class="clearfix thread">
-  <article class="post doc_id_128749327 post_is_op has_image" id="109236748" data-board="g">
-    <h2 class="post_title">/ptg/ - Private Trackers General</h2>
-    <time datetime="2026-07-09T21:58:03+00:00">Thu 09 Jul 2026 21:58:03</time>
-    <div class="text">RED edition<br /><br /><span class="greentext">&gt;Not sure what private trackers are all about?</span><br />A private tracker is an invite-only torrent website. <a href="https://example.com/faq">FAQ</a></div>
-  </article>
-  <article class="post" id="109237167" data-board="g">
-    <h2 class="post_title">reply</h2>
-    <div class="text">This reply is not a thread.</div>
-  </article>
-</article>
-<article class="post post_is_op" id="109238334" data-board="g">
-  <h2 class="post_title">/ptg/ - Private Trackers General</h2>
-  <time datetime="2026-07-10T08:00:00Z">Fri 10 Jul 2026 08:00:00</time>
-  <div class="text">Blue edition</div>
-</article>
-</body></html>`)
+func TestFlowEmitsLiveThread(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","com":"the tummies remain private Edition<br>FAQ: https://example.com","time":1788200342}]}]`)
 
-	items, err := (ptg.Flow{}).Extract(doc)
+	items, err := (ptg.Flow{}).Extract(page)
 	if err != nil {
 		t.Fatalf("Extract returned error: %v", err)
 	}
 	if len(items) != 1 {
-		t.Fatalf("expected 1 superseded thread (live dropped), got %d: %#v", len(items), items)
+		t.Fatalf("expected 1 live thread, got %d: %#v", len(items), items)
 	}
-
-	// The newest thread (2026-07-10, "Blue edition") is the live one and is
-	// dropped; the older "RED edition" thread has been superseded and remains.
 	item := items[0]
-	if item.GUID != "ptg:109236748" {
+	if item.GUID != "ptg:109697201" {
 		t.Fatalf("unexpected GUID: %q", item.GUID)
 	}
-	if item.Title != "/ptg/ - Private Trackers General — RED edition" {
-		t.Fatalf("unexpected title: %q", item.Title)
-	}
-	if item.Link != "https://desuarchive.org/g/thread/109236748/#109236748" {
+	if item.Link != "https://boards.4chan.org/g/thread/109697201/" {
 		t.Fatalf("unexpected link: %q", item.Link)
 	}
-	if item.Description != "RED edition\n\n>Not sure what private trackers are all about?\nA private tracker is an invite-only torrent website. FAQ" {
-		t.Fatalf("unexpected description: %q", item.Description)
+	if item.Title != "/ptg/ - Private Trackers General \u2014 the tummies remain private Edition" {
+		t.Fatalf("unexpected title: %q", item.Title)
 	}
-	wantDate := time.Date(2026, 7, 9, 21, 58, 3, 0, time.UTC)
+	wantDate := time.Unix(1788200342, 0).UTC()
 	if item.PubDate == nil || !item.PubDate.Equal(wantDate) {
-		t.Fatalf("unexpected pubDate: %#v", item.PubDate)
+		t.Fatalf("unexpected pubDate: %#v, want %v", item.PubDate, wantDate)
 	}
 }
 
-func TestFlowErrorsWhenOnlyTheLiveThreadIsPresent(t *testing.T) {
-	doc := parseHTML(t, `<html><body>
-<article class="post post_is_op" id="109238334" data-board="g">
-  <h2 class="post_title">/ptg/ - Private Trackers General</h2>
-  <time datetime="2026-07-10T08:00:00Z">Fri 10 Jul 2026 08:00:00</time>
-  <div class="text">Blue edition</div>
-</article>
-</body></html>`)
+func TestFlowEmitsAllMatchingThreadsAndIgnoresOthers(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":1,"sub":"/lmg/ - Local Models General","com":"local stuff","time":1788200000},{"no":109697201,"sub":"/ptg/ - Private Trackers General","com":"first Edition","time":1788200342},{"no":109730000,"sub":"/PTG/ follow-up","com":"second Edition","time":1788300000},{"no":999,"com":"sticky without subject","time":1788200000}]}]`)
 
-	_, err := (ptg.Flow{}).Extract(doc)
-	if err == nil {
-		t.Fatal("expected an error when only the live thread is present")
+	items, err := (ptg.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 ptg threads (no live-drop), got %d: %#v", len(items), items)
+	}
+	if items[0].GUID != "ptg:109697201" || items[1].GUID != "ptg:109730000" {
+		t.Fatalf("unexpected GUIDs: %q, %q", items[0].GUID, items[1].GUID)
 	}
 }
 
-func TestFlowRejectsPageWithoutValidOpeningPosts(t *testing.T) {
-	doc := parseHTML(t, `<html><body>
-<article class="post post_is_op" id="" data-board="g"><div class="text">missing id</div></article>
-<article class="post post_is_op" id="109236748" data-board="g"><div class="text">missing title and date</div></article>
-</body></html>`)
+func TestFlowSkipsInvalidThreads(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","com":"valid Edition","time":1788200342},{"no":0,"sub":"/ptg/ bad no","com":"x","time":1788200342},{"no":109697202,"sub":"/ptg/ no com","time":1788200342},{"no":109697203,"sub":"/ptg/ no time","com":"x"},{"no":109697204,"sub":"/ptg/ reply","com":"x","time":1788200342,"resto":109697201}]}]`)
 
-	_, err := (ptg.Flow{}).Extract(doc)
-	if err == nil {
-		t.Fatal("expected an error for a page without valid opening posts")
+	items, err := (ptg.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].GUID != "ptg:109697201" {
+		t.Fatalf("expected only the valid thread, got %#v", items)
 	}
 }
 
-func parseHTML(t *testing.T, body string) rfs.Page {
-	t.Helper()
-	page := rfs.Page(body)
-	if _, err := rfs.ParseHTML(page); err != nil {
-		t.Fatalf("parse fixture: %v", err)
+func TestFlowErrorsWhenNoMatch(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":1,"sub":"/lmg/ - Local Models General","com":"x","time":1788200000}]}]`)
+
+	if _, err := (ptg.Flow{}).Extract(page); err == nil {
+		t.Fatal("expected an error when no thread matches /ptg/")
 	}
-	return page
+}
+
+func TestFlowErrorsWhenOnlyInvalidMatchesRemain(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","time":1788200342}]}]`)
+
+	if _, err := (ptg.Flow{}).Extract(page); err == nil {
+		t.Fatal("expected an error when matches exist but none are valid")
+	}
+}
+
+func TestFlowDecodesComFragment(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","com":"RED edition<br><br><span class=\"quote\">&gt;Not sure what private trackers are?</span><br>A private tracker is an invite-only site. FAQ<wbr>_link &amp; friends <a href=\"//boards.4chan.org/g/catalog#s=ptg\" class=\"quotelink\">&gt;&gt;&gt;/g/ptg</a>","time":1788200342}]}]`)
+
+	items, err := (ptg.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	wantDesc := "RED edition\n\n>Not sure what private trackers are?\nA private tracker is an invite-only site. FAQ_link & friends >>>/g/ptg"
+	if items[0].Description != wantDesc {
+		t.Fatalf("unexpected description: %q, want %q", items[0].Description, wantDesc)
+	}
+	if items[0].Title != "/ptg/ - Private Trackers General \u2014 RED edition" {
+		t.Fatalf("unexpected title: %q", items[0].Title)
+	}
+}
+
+func TestFlowRejectsInvalidJSON(t *testing.T) {
+	for _, body := range []string{`not json`, `{}`, `[]`} {
+		if _, err := (ptg.Flow{}).Extract(rfs.Page(body)); err == nil {
+			t.Fatalf("expected an error for %q", body)
+		}
+	}
+}
+
+func TestFlowVersion(t *testing.T) {
+	if (ptg.Flow{}).Version() != ptg.ExtractVersion {
+		t.Fatalf("Version() = %d, want %d", (ptg.Flow{}).Version(), ptg.ExtractVersion)
+	}
+	if ptg.ExtractVersion != 3 {
+		t.Fatalf("ExtractVersion = %d, want 3 (catalog migration must invalidate snapshots)", ptg.ExtractVersion)
+	}
 }

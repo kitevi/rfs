@@ -1,6 +1,7 @@
 package ptg
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -13,166 +14,111 @@ import (
 )
 
 const (
-	archiveURL = "https://desuarchive.org"
-	board      = "g"
-	PageURL    = archiveURL + "/g/search/subject/ptg/type/op/"
+	// PageURL is the 4chan catalog API resource rfs polls for /ptg/ threads.
+	PageURL = "https://a.4cdn.org/g/catalog.json"
+	// HumanURL is the human-facing catalog view linked from feed metadata.
+	HumanURL = "https://boards.4chan.org/g/catalog#s=ptg"
+
+	threadBaseURL = "https://boards.4chan.org/g/thread/"
 )
 
 // ExtractVersion is the derivation version for the /ptg/ Flow. Bump it when
-// Extract's output can change for a fixed search-results page.
-const ExtractVersion = 2
+// Extract's output can change for a fixed catalog page.
+const ExtractVersion = 3
 
 type Flow struct{}
 
 // Version reports the /ptg/ extraction version.
 func (Flow) Version() int { return ExtractVersion }
 
-// Extract turns each opening-post result on the Desuarchive search page into
-// one RSS item. The search is restricted to OP posts, but checking the
-// post_is_op class here keeps the Flow correct if the page includes other
-// article types in the future.
-//
-// The currently-live /ptg/ thread is still filling up, so it is dropped: a
-// general is surfaced only once a newer one exists (i.e. it has been
-// superseded — filled up or archived). The live thread is the one with the
-// newest pubDate, found by date rather than search-result position so the
-// rule holds regardless of how Desuarchive orders the page.
+type catalogPage struct {
+	Threads []catalogThread `json:"threads"`
+}
+
+type catalogThread struct {
+	No    int64  `json:"no"`
+	Sub   string `json:"sub"`
+	Com   string `json:"com"`
+	Time  int64  `json:"time"`
+	Resto int64  `json:"resto"`
+}
+
+// Extract turns each /ptg/ opening post in the 4chan catalog into one RSS
+// item. The catalog lists only live threads, so every match is emitted
+// directly: unlike the former Desuarchive search, there is no superseded-only
+// rule and no live thread to drop.
 func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
-	doc, err := rfs.ParseHTML(page)
-	if err != nil {
-		return nil, fmt.Errorf("ptg: parse page: %w", err)
+	var doc []catalogPage
+	if err := json.Unmarshal([]byte(page), &doc); err != nil {
+		return nil, fmt.Errorf("ptg: parse catalog: %w", err)
 	}
 
 	var items []rfs.ExtractedItem
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == "article" && hasClass(n, "post_is_op") {
-			if item, ok := extractPost(n); ok {
-				items = append(items, item)
+	matched := false
+	for _, p := range doc {
+		for _, t := range p.Threads {
+			if !matchSubject(t.Sub) {
+				continue
 			}
-			return
-		}
-		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
+			matched = true
+			item, ok := extractThread(t)
+			if !ok {
+				continue
+			}
+			items = append(items, item)
 		}
 	}
-	walk(doc)
 
+	if !matched {
+		return nil, errors.New("ptg: no matching threads")
+	}
 	if len(items) == 0 {
-		return nil, errors.New("ptg: no valid opening-post search results")
+		return nil, errors.New("ptg: no valid threads")
 	}
-
-	// Every valid item carries a parsed pubDate (extractPost rejects posts
-	// without one), so the maximum is well-defined. The newest thread is the
-	// live one and is dropped; the rest have been superseded.
-	live := 0
-	for i := 1; i < len(items); i++ {
-		if items[i].PubDate.After(*items[live].PubDate) {
-			live = i
-		}
-	}
-	items = append(items[:live], items[live+1:]...)
-	if len(items) == 0 {
-		return nil, errors.New("ptg: only the live thread is present")
-	}
-
 	return items, nil
 }
 
-func extractPost(post *html.Node) (rfs.ExtractedItem, bool) {
-	id := attribute(post, "id")
-	if attribute(post, "data-board") != board {
+// matchSubject reports whether a catalog subject names the /ptg/ general.
+// The strict "/ptg/" form avoids false positives on subjects that merely
+// contain the letters ptg.
+func matchSubject(sub string) bool {
+	return strings.Contains(strings.ToLower(sub), "/ptg/")
+}
+
+func extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
+	if t.No <= 0 || t.Resto != 0 {
 		return rfs.ExtractedItem{}, false
 	}
-	if _, err := strconv.ParseUint(id, 10, 64); err != nil {
+	if t.Sub == "" || t.Com == "" || t.Time <= 0 {
 		return rfs.ExtractedItem{}, false
 	}
-
-	subjectNode := findElementByClass(post, "post_title")
-	timeNode := findElement(post, "time")
-	textNode := findElementByClass(post, "text")
-	if subjectNode == nil || timeNode == nil || textNode == nil {
+	id := strconv.FormatInt(t.No, 10)
+	description := decodeComFragment(t.Com)
+	if description == "" {
 		return rfs.ExtractedItem{}, false
 	}
-
-	subject := textContent(subjectNode)
-	dateValue := attribute(timeNode, "datetime")
-	pubDate, err := time.Parse(time.RFC3339Nano, dateValue)
-	if subject == "" || dateValue == "" || err != nil {
-		return rfs.ExtractedItem{}, false
-	}
-
-	link := archiveURL + "/" + board + "/thread/" + id + "/#" + id
-
-	description := textContent(textNode)
-	title := subject
+	title := t.Sub
 	if firstLine := strings.SplitN(description, "\n", 2)[0]; firstLine != "" {
-		title += " — " + firstLine
+		title += " \u2014 " + firstLine
 	}
-
+	pubDate := time.Unix(t.Time, 0).UTC()
 	return rfs.ExtractedItem{
 		GUID:        "ptg:" + id,
 		Title:       title,
-		Link:        link,
+		Link:        threadBaseURL + id + "/",
 		Description: description,
 		PubDate:     &pubDate,
 	}, true
 }
 
-func findElementByClass(root *html.Node, class string) *html.Node {
-	var found *html.Node
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if found != nil {
-			return
-		}
-		if n.Type == html.ElementNode && hasClass(n, class) {
-			found = n
-			return
-		}
-		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
+// decodeComFragment turns a 4chan OP HTML fragment (br, wbr, entities,
+// quotelink anchors) into normalized plain text.
+func decodeComFragment(fragment string) string {
+	doc, err := html.Parse(strings.NewReader("<div>" + fragment + "</div>"))
+	if err != nil {
+		return ""
 	}
-	walk(root)
-	return found
-}
-
-func findElement(root *html.Node, name string) *html.Node {
-	var found *html.Node
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if found != nil {
-			return
-		}
-		if n.Type == html.ElementNode && n.Data == name {
-			found = n
-			return
-		}
-		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(root)
-	return found
-}
-
-func attribute(root *html.Node, name string) string {
-	for _, attr := range root.Attr {
-		if attr.Key == name {
-			return attr.Val
-		}
-	}
-	return ""
-}
-
-func hasClass(root *html.Node, class string) bool {
-	for _, part := range strings.Fields(attribute(root, "class")) {
-		if part == class {
-			return true
-		}
-	}
-	return false
+	return textContent(doc)
 }
 
 func textContent(root *html.Node) string {

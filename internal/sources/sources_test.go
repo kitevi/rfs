@@ -21,8 +21,8 @@ func TestAllIncludesPTGSource(t *testing.T) {
 		if source.Meta.Title != "/ptg/ - Private Trackers General" {
 			t.Fatalf("ptg source title = %q", source.Meta.Title)
 		}
-		if source.Meta.Link != ptg.PageURL {
-			t.Fatalf("ptg source link = %q, want %q", source.Meta.Link, ptg.PageURL)
+		if source.Meta.Link != ptg.HumanURL {
+			t.Fatalf("ptg source link = %q, want %q", source.Meta.Link, ptg.HumanURL)
 		}
 		if source.Flow.Version() != ptg.ExtractVersion {
 			t.Fatalf("ptg source flow version = %d, want %d", source.Flow.Version(), ptg.ExtractVersion)

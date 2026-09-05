@@ -24,8 +24,8 @@ func All() []rfs.Source {
 			URL: ptg.PageURL,
 			Meta: rfs.SourceMeta{
 				Title:       "/ptg/ - Private Trackers General",
-				Description: "Latest /ptg/ opening posts returned by Desuarchive search.",
-				Link:        ptg.PageURL,
+				Description: "Latest /ptg/ opening posts via the 4chan catalog.",
+				Link:        ptg.HumanURL,
 			},
 			Flow: ptg.Flow{},
 		},
