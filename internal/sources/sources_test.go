@@ -46,8 +46,8 @@ func TestAllIncludesFilmSource(t *testing.T) {
 		if source.Meta.Title != "/film/ - Arthouse & Classic Cinema" {
 			t.Fatalf("film source title = %q", source.Meta.Title)
 		}
-		if source.Meta.Link != film.PageURL {
-			t.Fatalf("film source link = %q, want %q", source.Meta.Link, film.PageURL)
+		if source.Meta.Link != film.HumanURL {
+			t.Fatalf("film source link = %q, want %q", source.Meta.Link, film.HumanURL)
 		}
 		if source.Flow.Version() != film.ExtractVersion {
 			t.Fatalf("film source flow version = %d, want %d", source.Flow.Version(), film.ExtractVersion)

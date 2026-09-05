@@ -34,8 +34,8 @@ func All() []rfs.Source {
 			URL: film.PageURL,
 			Meta: rfs.SourceMeta{
 				Title:       "/film/ - Arthouse & Classic Cinema",
-				Description: "Latest /film/ opening posts returned by 4plebs search.",
-				Link:        film.PageURL,
+				Description: "Latest /film/ opening posts via the 4chan catalog.",
+				Link:        film.HumanURL,
 			},
 			Flow: film.Flow{},
 		},

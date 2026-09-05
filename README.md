@@ -15,7 +15,7 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/meltzer-5-star-matches.html` — HTML view of the feed
 - `/feeds/ptg.xml` — latest `/ptg/` threads via the 4chan catalog
 - `/feeds/ptg.html` — HTML view of the `/ptg/` feed
-- `/feeds/film.xml` — latest 4plebs `/film/` threads
+- `/feeds/film.xml` — latest `/film/` threads via the 4chan catalog
 - `/feeds/film.html` — HTML view of the `/film/` feed
 
 State is stored in a SQLite database under the OS user cache directory by default:

@@ -8,89 +8,104 @@ import (
 	"github.com/ppowo/rfs/internal/sources/film"
 )
 
-func TestFlowDropsLiveThreadAndKeepsSupersededThreads(t *testing.T) {
-	doc := parseHTML(t, `
-<html><body>
-<article class="clearfix thread">
-  <article class="post doc_id_214846968 post_is_op has_image" id="221573858" data-board="tv">
-    <h2 class="post_title">/film/</h2>
-    <time datetime="2026-07-06T10:59:11+00:00">Mon 06 Jul 2026 10:59:11</time>
-    <div class="text">Thread for the discussion of arthouse and classic cinema.<br /><br />Don Carlo edition<br /><span class="greentext">&gt;QOTD</span><br />What did you watch this week? <a href="https://example.com/chart">chart</a></div>
-  </article>
-  <article class="post" id="221574000" data-board="tv">
-    <h2 class="post_title">reply</h2>
-    <div class="text">This reply is not a thread.</div>
-  </article>
-</article>
-<article class="post post_is_op" id="221663746" data-board="tv">
-  <h2 class="post_title">/film/</h2>
-  <time datetime="2026-07-10T13:12:49+00:00">Fri 10 Jul 2026 13:12:49</time>
-  <div class="text">Thread for the discussion of arthouse and classic cinema.<br /><br />New edition</div>
-</article>
-</body></html>`)
+func TestFlowEmitsLiveThread(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":222965645,"sub":"/film/","com":"Arthouse &amp; Classics<br><br>Guiltydition","time":1788463410}]}]`)
 
-	items, err := (film.Flow{}).Extract(doc)
+	items, err := (film.Flow{}).Extract(page)
 	if err != nil {
 		t.Fatalf("Extract returned error: %v", err)
 	}
 	if len(items) != 1 {
-		t.Fatalf("expected 1 superseded thread (live dropped), got %d: %#v", len(items), items)
+		t.Fatalf("expected 1 live thread, got %d: %#v", len(items), items)
 	}
-
-	// The newest thread (2026-07-10, "New edition") is the live one and is
-	// dropped; the older "Don Carlo edition" thread has been superseded and
-	// remains.
 	item := items[0]
-	if item.GUID != "film:221573858" {
+	if item.GUID != "film:222965645" {
 		t.Fatalf("unexpected GUID: %q", item.GUID)
 	}
-	if item.Title != "/film/ — Thread for the discussion of arthouse and classic cinema." {
-		t.Fatalf("unexpected title: %q", item.Title)
-	}
-	if item.Link != "https://archive.4plebs.org/tv/thread/221573858/#221573858" {
+	if item.Link != "https://boards.4chan.org/tv/thread/222965645/" {
 		t.Fatalf("unexpected link: %q", item.Link)
 	}
-	if item.Description != "Thread for the discussion of arthouse and classic cinema.\n\nDon Carlo edition\n>QOTD\nWhat did you watch this week? chart" {
-		t.Fatalf("unexpected description: %q", item.Description)
+	if item.Title != "/film/ \u2014 Arthouse & Classics" {
+		t.Fatalf("unexpected title: %q", item.Title)
 	}
-	wantDate := time.Date(2026, 7, 6, 10, 59, 11, 0, time.UTC)
+	wantDate := time.Unix(1788463410, 0).UTC()
 	if item.PubDate == nil || !item.PubDate.Equal(wantDate) {
-		t.Fatalf("unexpected pubDate: %#v", item.PubDate)
+		t.Fatalf("unexpected pubDate: %#v, want %v", item.PubDate, wantDate)
 	}
 }
 
-func TestFlowErrorsWhenOnlyTheLiveThreadIsPresent(t *testing.T) {
-	doc := parseHTML(t, `<html><body>
-<article class="post post_is_op" id="221663746" data-board="tv">
-  <h2 class="post_title">/film/</h2>
-  <time datetime="2026-07-10T13:12:49+00:00">Fri 10 Jul 2026 13:12:49</time>
-  <div class="text">Thread for the discussion of arthouse and classic cinema.</div>
-</article>
-</body></html>`)
+func TestFlowEmitsAllMatchingThreadsAndIgnoresOthers(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":111,"sub":"/tv/ general","com":"other stuff","time":1788460000},{"no":222965645,"sub":"/film/","com":"first Edition","time":1788463410},{"no":222970000,"sub":"/FILM/ follow-up","com":"second Edition","time":1788500000},{"no":999,"com":"sticky without subject","time":1788460000}]}]`)
 
-	_, err := (film.Flow{}).Extract(doc)
-	if err == nil {
-		t.Fatal("expected an error when only the live thread is present")
+	items, err := (film.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 film threads (no live-drop), got %d: %#v", len(items), items)
+	}
+	if items[0].GUID != "film:222965645" || items[1].GUID != "film:222970000" {
+		t.Fatalf("unexpected GUIDs: %q, %q", items[0].GUID, items[1].GUID)
 	}
 }
 
-func TestFlowRejectsPageWithoutValidOpeningPosts(t *testing.T) {
-	doc := parseHTML(t, `<html><body>
-<article class="post post_is_op" id="" data-board="tv"><div class="text">missing id</div></article>
-<article class="post post_is_op" id="221573858" data-board="tv"><div class="text">missing title and date</div></article>
-</body></html>`)
+func TestFlowSkipsInvalidThreads(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":222965645,"sub":"/film/","com":"valid Edition","time":1788463410},{"no":0,"sub":"/film/ bad no","com":"x","time":1788463410},{"no":222965646,"sub":"/film/ no com","time":1788463410},{"no":222965647,"sub":"/film/ no time","com":"x"},{"no":222965648,"sub":"/film/ reply","com":"x","time":1788463410,"resto":222965645}]}]`)
 
-	_, err := (film.Flow{}).Extract(doc)
-	if err == nil {
-		t.Fatal("expected an error for a page without valid opening posts")
+	items, err := (film.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(items) != 1 || items[0].GUID != "film:222965645" {
+		t.Fatalf("expected only the valid thread, got %#v", items)
 	}
 }
 
-func parseHTML(t *testing.T, body string) rfs.Page {
-	t.Helper()
-	page := rfs.Page(body)
-	if _, err := rfs.ParseHTML(page); err != nil {
-		t.Fatalf("parse fixture: %v", err)
+func TestFlowErrorsWhenNoMatch(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":111,"sub":"/tv/ general","com":"x","time":1788460000}]}]`)
+
+	if _, err := (film.Flow{}).Extract(page); err == nil {
+		t.Fatal("expected an error when no thread matches /film/")
 	}
-	return page
+}
+
+func TestFlowErrorsWhenOnlyInvalidMatchesRemain(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":222965645,"sub":"/film/","time":1788463410}]}]`)
+
+	if _, err := (film.Flow{}).Extract(page); err == nil {
+		t.Fatal("expected an error when matches exist but none are valid")
+	}
+}
+
+func TestFlowDecodesComFragment(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":221573858,"sub":"/film/","com":"Thread for the discussion of arthouse and classic cinema.<br><br>Don Carlo edition<br><span class=\"quote\">&gt;QOTD</span><br>What did you watch this week? <a href=\"https://example.com/chart\">chart</a>","time":1788463410}]}]`)
+
+	items, err := (film.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	wantDesc := "Thread for the discussion of arthouse and classic cinema.\n\nDon Carlo edition\n>QOTD\nWhat did you watch this week? chart"
+	if items[0].Description != wantDesc {
+		t.Fatalf("unexpected description: %q, want %q", items[0].Description, wantDesc)
+	}
+	if items[0].Title != "/film/ \u2014 Thread for the discussion of arthouse and classic cinema." {
+		t.Fatalf("unexpected title: %q", items[0].Title)
+	}
+}
+
+func TestFlowRejectsInvalidJSON(t *testing.T) {
+	for _, body := range []string{`not json`, `{}`, `[]`} {
+		if _, err := (film.Flow{}).Extract(rfs.Page(body)); err == nil {
+			t.Fatalf("expected an error for %q", body)
+		}
+	}
+}
+
+func TestFlowVersion(t *testing.T) {
+	if (film.Flow{}).Version() != film.ExtractVersion {
+		t.Fatalf("Version() = %d, want %d", (film.Flow{}).Version(), film.ExtractVersion)
+	}
+	if film.ExtractVersion != 2 {
+		t.Fatalf("ExtractVersion = %d, want 2 (catalog migration must invalidate snapshots)", film.ExtractVersion)
+	}
 }
