@@ -25,6 +25,23 @@ type Flow interface {
 	Version() int
 }
 
+// HistoryPolicy opts a Source into catalog-history accumulation instead of
+// snapshot replace. Stored rows are pruned to StoredLimit (never deleting
+// live GUIDs); feeds serve at most VisibleLimit rows, hiding live threads
+// until they reach MinLiveReplies mature posts.
+type HistoryPolicy struct {
+	VisibleLimit   int
+	StoredLimit    int
+	MinLiveReplies int
+}
+
+// DefaultCatalogHistory is the agreed window for /ptg/ and /film/: keep the
+// last 10 superseded threads visible, store 11 to buffer 1 live thread, and
+// surface a live thread once it has 100 posts.
+func DefaultCatalogHistory() *HistoryPolicy {
+	return &HistoryPolicy{VisibleLimit: 10, StoredLimit: 11, MinLiveReplies: 100}
+}
+
 // Source wires a hardcoded upstream resource to the Flow and feed metadata.
 type Source struct {
 	ID   string
@@ -34,6 +51,10 @@ type Source struct {
 
 	// Interval overrides the process's default poll interval when positive.
 	Interval time.Duration
+
+	// History, when non-nil, enables accumulation instead of replace.
+	// Nil preserves the original current-state projection (e.g. meltzer).
+	History *HistoryPolicy
 }
 
 // Item is a single entry in a Source's RSS feed.
@@ -43,6 +64,9 @@ type Item struct {
 	Link        string
 	Description string
 	PubDate     time.Time
+	// Replies is the catalog reply count observed when the thread was last
+	// seen. Zero when the Flow does not report one.
+	Replies int
 }
 
 // ExtractedItem is an Item emitted by a Flow before rfs has applied fallback
@@ -53,4 +77,7 @@ type ExtractedItem struct {
 	Link        string
 	Description string
 	PubDate     *time.Time
+	// Replies is the catalog reply count for maturity filtering. Flows that
+	// do not observe one leave it zero (treated as immature while live).
+	Replies int
 }

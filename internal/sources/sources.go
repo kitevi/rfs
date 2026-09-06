@@ -27,7 +27,8 @@ func All() []rfs.Source {
 				Description: "Latest /ptg/ opening posts via the 4chan catalog.",
 				Link:        ptg.HumanURL,
 			},
-			Flow: ptg.Flow{},
+			Flow:    ptg.Flow{},
+			History: rfs.DefaultCatalogHistory(),
 		},
 		{
 			ID:  "film",
@@ -37,7 +38,8 @@ func All() []rfs.Source {
 				Description: "Latest /film/ opening posts via the 4chan catalog.",
 				Link:        film.HumanURL,
 			},
-			Flow: film.Flow{},
+			Flow:    film.Flow{},
+			History: rfs.DefaultCatalogHistory(),
 		},
 	}
 }

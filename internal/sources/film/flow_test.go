@@ -32,6 +32,23 @@ func TestFlowEmitsLiveThread(t *testing.T) {
 	if item.PubDate == nil || !item.PubDate.Equal(wantDate) {
 		t.Fatalf("unexpected pubDate: %#v, want %v", item.PubDate, wantDate)
 	}
+	if item.Replies != 0 {
+		t.Fatalf("unexpected replies without count: %d", item.Replies)
+	}
+}
+
+func TestFlowParsesReplyCounts(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":222965645,"sub":"/film/","com":"Edition","time":1788463410,"replies":120,"images":10}]}]`)
+	items, err := (film.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected 1 item, got %d", len(items))
+	}
+	if items[0].Replies != 120 {
+		t.Fatalf("replies = %d, want 120", items[0].Replies)
+	}
 }
 
 func TestFlowEmitsAllMatchingThreadsAndIgnoresOthers(t *testing.T) {
@@ -105,7 +122,7 @@ func TestFlowVersion(t *testing.T) {
 	if (film.Flow{}).Version() != film.ExtractVersion {
 		t.Fatalf("Version() = %d, want %d", (film.Flow{}).Version(), film.ExtractVersion)
 	}
-	if film.ExtractVersion != 2 {
-		t.Fatalf("ExtractVersion = %d, want 2 (catalog migration must invalidate snapshots)", film.ExtractVersion)
+	if film.ExtractVersion != 3 {
+		t.Fatalf("ExtractVersion = %d, want 3 (replies for maturity filter must invalidate snapshots)", film.ExtractVersion)
 	}
 }

@@ -24,7 +24,7 @@ const (
 
 // ExtractVersion is the derivation version for the /ptg/ Flow. Bump it when
 // Extract's output can change for a fixed catalog page.
-const ExtractVersion = 3
+const ExtractVersion = 4
 
 type Flow struct{}
 
@@ -36,11 +36,13 @@ type catalogPage struct {
 }
 
 type catalogThread struct {
-	No    int64  `json:"no"`
-	Sub   string `json:"sub"`
-	Com   string `json:"com"`
-	Time  int64  `json:"time"`
-	Resto int64  `json:"resto"`
+	No      int64  `json:"no"`
+	Sub     string `json:"sub"`
+	Com     string `json:"com"`
+	Time    int64  `json:"time"`
+	Resto   int64  `json:"resto"`
+	Replies int    `json:"replies"`
+	Images  int    `json:"images"`
 }
 
 // Extract turns each /ptg/ opening post in the 4chan catalog into one RSS
@@ -102,12 +104,17 @@ func extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 		title += " \u2014 " + firstLine
 	}
 	pubDate := time.Unix(t.Time, 0).UTC()
+	replies := t.Replies
+	if replies < 0 {
+		replies = 0
+	}
 	return rfs.ExtractedItem{
 		GUID:        "ptg:" + id,
 		Title:       title,
 		Link:        threadBaseURL + id + "/",
 		Description: description,
 		PubDate:     &pubDate,
+		Replies:     replies,
 	}, true
 }
 

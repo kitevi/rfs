@@ -32,6 +32,26 @@ func TestFlowEmitsLiveThread(t *testing.T) {
 	if item.PubDate == nil || !item.PubDate.Equal(wantDate) {
 		t.Fatalf("unexpected pubDate: %#v, want %v", item.PubDate, wantDate)
 	}
+	if item.Replies != 0 {
+		t.Fatalf("unexpected replies without count: %d", item.Replies)
+	}
+}
+
+func TestFlowParsesReplyCounts(t *testing.T) {
+	page := rfs.Page(`[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","com":"Edition","time":1788200342,"replies":150,"images":20},{"no":109730000,"sub":"/ptg/ next","com":"Edition","time":1788300000}]}]`)
+	items, err := (ptg.Flow{}).Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+	if items[0].Replies != 150 {
+		t.Fatalf("replies = %d, want 150", items[0].Replies)
+	}
+	if items[1].Replies != 0 {
+		t.Fatalf("missing replies should default to 0, got %d", items[1].Replies)
+	}
 }
 
 func TestFlowEmitsAllMatchingThreadsAndIgnoresOthers(t *testing.T) {
@@ -105,7 +125,7 @@ func TestFlowVersion(t *testing.T) {
 	if (ptg.Flow{}).Version() != ptg.ExtractVersion {
 		t.Fatalf("Version() = %d, want %d", (ptg.Flow{}).Version(), ptg.ExtractVersion)
 	}
-	if ptg.ExtractVersion != 3 {
-		t.Fatalf("ExtractVersion = %d, want 3 (catalog migration must invalidate snapshots)", ptg.ExtractVersion)
+	if ptg.ExtractVersion != 4 {
+		t.Fatalf("ExtractVersion = %d, want 4 (replies for maturity filter must invalidate snapshots)", ptg.ExtractVersion)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -46,6 +47,12 @@ func (s *SQLiteStore) init(ctx context.Context) error {
 			link TEXT NOT NULL,
 			description TEXT NOT NULL,
 			pub_date TEXT NOT NULL,
+			replies INTEGER NOT NULL DEFAULT 0,
+			PRIMARY KEY (source_id, guid)
+		)`,
+		`CREATE TABLE IF NOT EXISTS live_state (
+			source_id TEXT NOT NULL,
+			guid TEXT NOT NULL,
 			PRIMARY KEY (source_id, guid)
 		)`,
 		`CREATE TABLE IF NOT EXISTS first_seen (
@@ -72,7 +79,20 @@ func (s *SQLiteStore) init(ctx context.Context) error {
 // migrate adds columns introduced after the initial schema to databases
 // created by older rfs builds. Each step is idempotent.
 func (s *SQLiteStore) migrate(ctx context.Context) error {
-	return s.addColumnIfMissing(ctx, "fetch_cache", "extract_version", "INTEGER NOT NULL DEFAULT 0")
+	if err := s.addColumnIfMissing(ctx, "fetch_cache", "extract_version", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.addColumnIfMissing(ctx, "snapshots", "replies", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if _, err := s.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS live_state (
+			source_id TEXT NOT NULL,
+			guid TEXT NOT NULL,
+			PRIMARY KEY (source_id, guid)
+		)`); err != nil {
+		return err
+	}
+	return nil
 }
 
 // addColumnIfMissing adds column to table with the given SQLite definition when
@@ -119,14 +139,14 @@ func (s *SQLiteStore) SaveSnapshot(ctx context.Context, sourceID string, items [
 	if _, err := tx.ExecContext(ctx, `DELETE FROM snapshots WHERE source_id = ?`, sourceID); err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date) VALUES (?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, replies) VALUES (?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, item := range items {
-		if _, err := stmt.ExecContext(ctx, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate)); err != nil {
+		if _, err := stmt.ExecContext(ctx, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Replies); err != nil {
 			return err
 		}
 	}
@@ -135,7 +155,7 @@ func (s *SQLiteStore) SaveSnapshot(ctx context.Context, sourceID string, items [
 }
 
 func (s *SQLiteStore) LoadSnapshot(ctx context.Context, sourceID string) ([]Item, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT guid, title, link, description, pub_date FROM snapshots WHERE source_id = ? ORDER BY pub_date DESC, guid ASC`, sourceID)
+	rows, err := s.db.QueryContext(ctx, `SELECT guid, title, link, description, pub_date, replies FROM snapshots WHERE source_id = ? ORDER BY pub_date DESC, guid ASC`, sourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +165,7 @@ func (s *SQLiteStore) LoadSnapshot(ctx context.Context, sourceID string) ([]Item
 	for rows.Next() {
 		var item Item
 		var pubDate string
-		if err := rows.Scan(&item.GUID, &item.Title, &item.Link, &item.Description, &pubDate); err != nil {
+		if err := rows.Scan(&item.GUID, &item.Title, &item.Link, &item.Description, &pubDate, &item.Replies); err != nil {
 			return nil, err
 		}
 		parsed, err := parseStoreTime(pubDate)
@@ -156,6 +176,160 @@ func (s *SQLiteStore) LoadSnapshot(ctx context.Context, sourceID string) ([]Item
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// MergeHistory accumulates observed catalog threads for history sources.
+// It upserts items (refreshing title/link/description/pub_date/replies),
+// replaces the live GUID set, then prunes non-live rows beyond keepStored
+// newest (pub_date DESC, guid ASC). Live GUIDs are never pruned. The three
+// steps run in one transaction.
+func (s *SQLiteStore) MergeHistory(ctx context.Context, sourceID string, items []Item, liveGUIDs []string, keepStored int) error {
+	if keepStored <= 0 {
+		keepStored = 11
+	}
+	deduped := dedupeLiveGUIDs(liveGUIDs)
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackUnlessCommitted(tx)
+
+	if len(items) > 0 {
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, replies) VALUES (?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(source_id, guid) DO UPDATE SET title = excluded.title, link = excluded.link, description = excluded.description, pub_date = excluded.pub_date, replies = excluded.replies`)
+		if err != nil {
+			return err
+		}
+		for _, item := range items {
+			if _, err := stmt.ExecContext(ctx, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Replies); err != nil {
+				_ = stmt.Close()
+				return err
+			}
+		}
+		_ = stmt.Close()
+	}
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM live_state WHERE source_id = ?`, sourceID); err != nil {
+		return err
+	}
+	if len(deduped) > 0 {
+		liveStmt, err := tx.PrepareContext(ctx, `INSERT INTO live_state (source_id, guid) VALUES (?, ?)`)
+		if err != nil {
+			return err
+		}
+		for _, guid := range deduped {
+			if _, err := liveStmt.ExecContext(ctx, sourceID, guid); err != nil {
+				_ = liveStmt.Close()
+				return err
+			}
+		}
+		_ = liveStmt.Close()
+	}
+
+	if err := pruneHistoryTx(ctx, tx, sourceID, deduped, keepStored); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func dedupeLiveGUIDs(guids []string) []string {
+	seen := make(map[string]struct{}, len(guids))
+	out := make([]string, 0, len(guids))
+	for _, g := range guids {
+		if g == "" {
+			continue
+		}
+		if _, ok := seen[g]; ok {
+			continue
+		}
+		seen[g] = struct{}{}
+		out = append(out, g)
+	}
+	return out
+}
+
+func pruneHistoryTx(ctx context.Context, tx *sql.Tx, sourceID string, liveGUIDs []string, keepStored int) error {
+	if len(liveGUIDs) == 0 {
+		_, err := tx.ExecContext(ctx, `DELETE FROM snapshots WHERE source_id = ? AND guid NOT IN (
+			SELECT guid FROM snapshots WHERE source_id = ? ORDER BY pub_date DESC, guid ASC LIMIT ?
+		)`, sourceID, sourceID, keepStored)
+		return err
+	}
+	placeholders := strings.Repeat("?,", len(liveGUIDs))
+	placeholders = strings.TrimSuffix(placeholders, ",")
+	args := make([]any, 0, len(liveGUIDs)+3)
+	args = append(args, sourceID)
+	for _, g := range liveGUIDs {
+		args = append(args, g)
+	}
+	args = append(args, sourceID, keepStored)
+	// SQLite does not allow a bound LIMIT parameter in every build, so keepStored
+	// is an internal constant (not user input) interpolated after a sanity clamp.
+	if keepStored < 1 {
+		keepStored = 1
+	}
+	query := `DELETE FROM snapshots WHERE source_id = ? AND guid NOT IN (` + placeholders + `) AND guid NOT IN (
+		SELECT guid FROM snapshots WHERE source_id = ? ORDER BY pub_date DESC, guid ASC LIMIT ` + itoa(keepStored) + `
+	)`
+	// Rebuild args without the trailing keepStored bound value.
+	args = args[:len(args)-1]
+	_, err := tx.ExecContext(ctx, query, args...)
+	return err
+}
+
+func itoa(n int) string {
+	return fmt.Sprintf("%d", n)
+}
+
+// LoadVisibleHistory serves history feeds: stored threads minus immature
+// live threads (live with replies < minLiveReplies), newest first, capped
+// at limit. Dead threads are always visible; mature live threads are visible
+// while still live.
+func (s *SQLiteStore) LoadVisibleHistory(ctx context.Context, sourceID string, minLiveReplies, limit int) ([]Item, error) {
+	if limit <= 0 {
+		limit = 10
+	}
+	rows, err := s.db.QueryContext(ctx, `SELECT s.guid, s.title, s.link, s.description, s.pub_date, s.replies
+		FROM snapshots s LEFT JOIN live_state l ON s.source_id = l.source_id AND s.guid = l.guid
+		WHERE s.source_id = ? AND (l.guid IS NULL OR s.replies >= ?)
+		ORDER BY s.pub_date DESC, s.guid ASC LIMIT ?`, sourceID, minLiveReplies, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Item
+	for rows.Next() {
+		var item Item
+		var pubDate string
+		if err := rows.Scan(&item.GUID, &item.Title, &item.Link, &item.Description, &pubDate, &item.Replies); err != nil {
+			return nil, err
+		}
+		parsed, err := parseStoreTime(pubDate)
+		if err != nil {
+			return nil, fmt.Errorf("parse stored pubDate for %s: %w", item.GUID, err)
+		}
+		item.PubDate = parsed
+		items = append(items, item)
+	}
+	return items, rows.Err()
+}
+
+// LoadLiveGUIDs returns the currently stored live set for a source.
+func (s *SQLiteStore) LoadLiveGUIDs(ctx context.Context, sourceID string) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT guid FROM live_state WHERE source_id = ? ORDER BY guid ASC`, sourceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var guids []string
+	for rows.Next() {
+		var g string
+		if err := rows.Scan(&g); err != nil {
+			return nil, err
+		}
+		guids = append(guids, g)
+	}
+	return guids, rows.Err()
 }
 
 func (s *SQLiteStore) FirstSeen(ctx context.Context, sourceID, guid string, discoveredAt time.Time) (time.Time, error) {

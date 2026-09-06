@@ -8,6 +8,7 @@ import (
 
 type SnapshotReader interface {
 	LoadSnapshot(context.Context, string) ([]Item, error)
+	LoadVisibleHistory(context.Context, string, int, int) ([]Item, error)
 }
 
 type HTTPHandler struct {
@@ -48,7 +49,21 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	items, err := h.store.LoadSnapshot(r.Context(), sourceID)
+	var items []Item
+	var err error
+	if source.History != nil {
+		minLive := source.History.MinLiveReplies
+		if minLive < 0 {
+			minLive = 0
+		}
+		limit := source.History.VisibleLimit
+		if limit <= 0 {
+			limit = 10
+		}
+		items, err = h.store.LoadVisibleHistory(r.Context(), sourceID, minLive, limit)
+	} else {
+		items, err = h.store.LoadSnapshot(r.Context(), sourceID)
+	}
 	if err != nil {
 		http.Error(w, "load feed snapshot", http.StatusInternalServerError)
 		return

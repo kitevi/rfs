@@ -14,6 +14,7 @@ type SnapshotStore interface {
 	LoadFetchCache(context.Context, string) (FetchCache, error)
 	SaveFetchCache(context.Context, string, FetchCache) error
 	SaveSnapshot(context.Context, string, []Item) error
+	MergeHistory(context.Context, string, []Item, []string, int) error
 	FirstSeen(context.Context, string, string, time.Time) (time.Time, error)
 }
 
@@ -124,10 +125,23 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 			Link:        item.Link,
 			Description: item.Description,
 			PubDate:     pubDate,
+			Replies:     item.Replies,
 		})
 	}
 
-	if err := p.Store.SaveSnapshot(ctx, source.ID, items); err != nil {
+	if source.History != nil {
+		keepStored := source.History.StoredLimit
+		if keepStored <= 0 {
+			keepStored = 11
+		}
+		liveGUIDs := make([]string, 0, len(items))
+		for _, item := range items {
+			liveGUIDs = append(liveGUIDs, item.GUID)
+		}
+		if err := p.Store.MergeHistory(ctx, source.ID, items, liveGUIDs, keepStored); err != nil {
+			return PollResult{}, err
+		}
+	} else if err := p.Store.SaveSnapshot(ctx, source.ID, items); err != nil {
 		return PollResult{}, err
 	}
 	// The snapshot was just re-derived with the running Flow's code, so advance
