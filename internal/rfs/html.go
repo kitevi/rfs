@@ -63,7 +63,7 @@ const feedTemplate = `<!DOCTYPE html>
 {{ range .Items }}<li>
 <a class="item-title" href="{{ .Link }}">{{ .Title }}</a>
 <p class="item-date">{{ .PubDate }}</p>
-{{ if .Description }}<p class="meta">{{ .Description }}</p>{{ end }}
+{{ if .Description }}<div class="meta">{{ .Description }}</div>{{ end }}
 </li>
 {{ else }}<li class="meta">No items yet.</li>
 {{ end }}</ul>
@@ -74,7 +74,7 @@ const feedTemplate = `<!DOCTYPE html>
 type feedItemView struct {
 	Title       string
 	Link        string
-	Description string
+	Description any
 	PubDate     string
 }
 
@@ -106,10 +106,14 @@ func RenderHTMLFeed(sourceID string, meta SourceMeta, items []Item, build BuildI
 		Build: build,
 	}
 	for _, item := range items {
+		var description any = item.Description
+		if meta.ItemDescriptionsHTML {
+			description = template.HTML(item.Description)
+		}
 		view.Items = append(view.Items, feedItemView{
 			Title:       item.Title,
 			Link:        item.Link,
-			Description: item.Description,
+			Description: description,
 			PubDate:     formatHTMLDate(item.PubDate),
 		})
 	}

@@ -68,6 +68,10 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		requestCache = FetchCache{}
 	}
 
+	if _, ok := source.Flow.(PaginatedFlow); ok {
+		// A validator for page one says nothing about the remaining pages.
+		requestCache = FetchCache{}
+	}
 	fetchResult, err := p.Fetcher.Fetch(ctx, source.URL, requestCache)
 	if err != nil {
 		return PollResult{}, err
@@ -94,9 +98,13 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		return PollResult{}, fmt.Errorf("poll %s: unknown fetch status %d", source.ID, fetchResult.Status)
 	}
 
-	extracted, err := source.Flow.Extract(fetchResult.Page)
+	extracted, err := p.extractPages(ctx, source, fetchResult.Page)
 	if err != nil {
-		return PollResult{}, err
+		return pollFailure(err)
+	}
+
+	if flow, ok := source.Flow.(ChangeFlow); ok {
+		return p.pollChanges(ctx, source, flow, extracted, savedCache)
 	}
 
 	items := make([]Item, 0, len(extracted))

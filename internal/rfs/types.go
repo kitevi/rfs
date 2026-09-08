@@ -4,9 +4,12 @@ import "time"
 
 // SourceMeta describes the RSS channel served for a Source.
 type SourceMeta struct {
-	Title       string
-	Description string
-	Link        string
+	// ItemDescriptionsHTML is only for Flows that construct safe HTML and escape
+	// all upstream text. Never enable it for raw upstream descriptions.
+	ItemDescriptionsHTML bool
+	Title                string
+	Description          string
+	Link                 string
 }
 
 // Page is the response body fetched for a Source. A Flow decides how to decode

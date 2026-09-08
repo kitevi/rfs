@@ -40,6 +40,12 @@ func (s *SQLiteStore) Close() error {
 
 func (s *SQLiteStore) init(ctx context.Context) error {
 	statements := []string{
+		`CREATE TABLE IF NOT EXISTS change_state (
+			source_id TEXT PRIMARY KEY,
+			baseline BLOB NOT NULL,
+			version INTEGER NOT NULL,
+			revision INTEGER NOT NULL
+		)`,
 		`CREATE TABLE IF NOT EXISTS snapshots (
 			source_id TEXT NOT NULL,
 			guid TEXT NOT NULL,
