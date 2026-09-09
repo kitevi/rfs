@@ -17,29 +17,6 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/ptg.html` — HTML view of the `/ptg/` feed
 - `/feeds/film.xml` — latest `/film/` threads via the 4chan catalog
 - `/feeds/film.html` — HTML view of the `/film/` feed
-- `/feeds/seadex.xml` — Discord-style SeaDex recommendation diffs
-- `/feeds/seadex.html` — HTML view of the SeaDex diffs
-
-### SeaDex
-
-The first successful complete poll silently establishes a baseline. Subsequent
-polls publish changed sections with `-` removed and `+` added lines: Best, Alt,
-Unmuxed Best, Notes, Tags, Dual Audio, Incomplete, Comparisons, and release
-identities/links. Replacements within the same release group are also detected.
-Each observed revision gets a new GUID, including reversions and removals.
-
-Titles and optional cover URLs come from AniList, requested only for changed
-anime. Missing/invalid cover URLs are skipped; rfs does not download images.
-When AniList has no matching title, the item falls back to its AniList ID.
-Failed SeaDex pages or failed AniList queries leave the baseline and feed intact
-for a later retry. HTTP 403 blocks are reported, not bypassed.
-
-SeaDex uses the default poll interval (one hour; adjustable with `-interval`).
-This is an **observed-change feed**, not a Discord message mirror: edits made
-and reverted between polls cannot be recovered. Dates are observation times.
-The baseline and all emitted updates persist in SQLite across restarts; history
-is currently retained without automatic pruning. Extraction-version upgrades
-silently rebaseline rather than publishing code-induced changes.
 
 ## Storage
 
