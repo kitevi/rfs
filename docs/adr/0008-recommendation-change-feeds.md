@@ -51,7 +51,11 @@ HTML headings, preformatted `-`/`+` lines and optional colors.
 
 `EnrichedChangeFlow` describes read-only JSON metadata queries; rfs performs
 batched requests (up to 50 changed items) through the same HTTP client. SeaDex
-uses AniList's documented GraphQL POST interface for titles and cover URLs.
+uses SeaDex's public `anilist` collection via GET for titles and cover URLs.
+A nil enrichment request body selects GET; non-nil bodies retain JSON POST.
+The original direct AniList POST returned HTTP 403 on this host, preventing
+all changed polls from committing. The SeaDex-hosted cache was verified live;
+no blocked endpoint is bypassed.
 No metadata requests are made for the baseline or unchanged polls. A failed
 query preserves the pending change for retry. Missing titles fall back to
 AniList IDs; missing/invalid cover URLs are ignored. rfs never fetches images.

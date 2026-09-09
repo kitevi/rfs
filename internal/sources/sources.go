@@ -5,10 +5,22 @@ import (
 	"github.com/ppowo/rfs/internal/sources/film"
 	"github.com/ppowo/rfs/internal/sources/meltzer"
 	"github.com/ppowo/rfs/internal/sources/ptg"
+	"github.com/ppowo/rfs/internal/sources/seadex"
 )
 
 func All() []rfs.Source {
 	return []rfs.Source{
+		{
+			ID:  "seadex",
+			URL: seadex.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:                "SeaDex recommendation changes",
+				Description:          "Observed changes to Best, Alt, Unmuxed Best and notes; silent initial baseline.",
+				Link:                 seadex.HumanURL,
+				ItemDescriptionsHTML: true,
+			},
+			Flow: seadex.Flow{CachedMetadataURL: seadex.CachedMetadataURL},
+		},
 		{
 			ID:  "meltzer-5-star-matches",
 			URL: meltzer.PageURL,

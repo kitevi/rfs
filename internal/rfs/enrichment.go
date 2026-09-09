@@ -7,6 +7,7 @@ import (
 
 // EnrichedChangeFlow describes optional metadata queries for emitted changes.
 // rfs performs the IO; the Flow constructs queries and decodes responses.
+// A nil request body selects GET; a non-nil body selects a JSON POST.
 type EnrichedChangeFlow interface {
 	ChangeFlow
 	EnrichmentRequest([]ExtractedItem) (string, []byte, error)
@@ -31,11 +32,16 @@ func (p Poller) enrichChanges(ctx context.Context, flow ChangeFlow, changes []Ex
 		if url == "" {
 			continue
 		}
-		fetcher, ok := p.Fetcher.(JSONFetcher)
-		if !ok {
-			return nil, fmt.Errorf("fetcher does not support JSON metadata queries")
+		var result FetchResult
+		if body == nil {
+			result, err = p.Fetcher.Fetch(ctx, url, FetchCache{})
+		} else {
+			fetcher, ok := p.Fetcher.(JSONFetcher)
+			if !ok {
+				return nil, fmt.Errorf("fetcher does not support JSON metadata queries")
+			}
+			result, err = fetcher.FetchJSON(ctx, url, body)
 		}
-		result, err := fetcher.FetchJSON(ctx, url, body)
 		if err != nil {
 			return nil, err
 		}

@@ -59,9 +59,9 @@ func TestAllIncludesFilmSource(t *testing.T) {
 }
 
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
-// osmer-rain-trieste, ptv-remote-italy-jobs, and seadex Flows were removed.
+// osmer-rain-trieste, and ptv-remote-italy-jobs Flows were removed.
 func TestAllExcludesRemovedSources(t *testing.T) {
-	want := map[string]bool{"meltzer-5-star-matches": true, "ptg": true, "film": true}
+	want := map[string]bool{"meltzer-5-star-matches": true, "ptg": true, "film": true, "seadex": true}
 	all := sources.All()
 	for _, source := range all {
 		if !want[source.ID] {
@@ -72,7 +72,7 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 3 {
-		t.Fatalf("len(sources.All()) = %d, want 3", len(all))
+	if len(all) != 4 {
+		t.Fatalf("len(sources.All()) = %d, want 4", len(all))
 	}
 }
