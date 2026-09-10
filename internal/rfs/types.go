@@ -55,6 +55,13 @@ type Source struct {
 	// Interval overrides the process's default poll interval when positive.
 	Interval time.Duration
 
+	// EmitInitial publishes a change feed's first complete observation as feed
+	// items instead of storing it as a silent baseline, so subscribers of a new
+	// feed see the notices that are already in force. An extraction-version
+	// rebaseline stays silent either way. The zero value keeps the ADR 0008
+	// behavior (SeaDex and any Flow whose first observation must not announce).
+	EmitInitial bool
+
 	// History, when non-nil, enables accumulation instead of replace.
 	// Nil preserves the original current-state projection (e.g. meltzer).
 	History *HistoryPolicy

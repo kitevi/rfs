@@ -68,8 +68,10 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		requestCache = FetchCache{}
 	}
 
-	if _, ok := source.Flow.(PaginatedFlow); ok {
-		// A validator for page one says nothing about the remaining pages.
+	// A collection validator only proves that the collection bytes are
+	// unchanged. It says nothing about the secondary pages that carry observed
+	// state, so those Flows always fetch the collection unconditionally.
+	if flowRequiresFullPage(source.Flow) {
 		requestCache = FetchCache{}
 	}
 	fetchResult, err := p.Fetcher.Fetch(ctx, source.URL, requestCache)
@@ -84,6 +86,9 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 
 	switch fetchResult.Status {
 	case FetchNotModified:
+		if flowRequiresFullPage(source.Flow) {
+			return PollResult{}, fmt.Errorf("poll %s: requires a full collection page, got 304", source.ID)
+		}
 		if err := p.Store.SaveFetchCache(ctx, source.ID, savedCache); err != nil {
 			return PollResult{}, err
 		}
@@ -98,7 +103,7 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		return PollResult{}, fmt.Errorf("poll %s: unknown fetch status %d", source.ID, fetchResult.Status)
 	}
 
-	extracted, err := p.extractPages(ctx, source, fetchResult.Page)
+	extracted, err := p.extractObservation(ctx, source, fetchResult.Page)
 	if err != nil {
 		return pollFailure(err)
 	}
@@ -159,6 +164,16 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		return PollResult{}, err
 	}
 	return PollResult{Status: PollUpdated}, nil
+}
+
+// flowRequiresFullPage reports whether a Flow's observed state depends on
+// secondary pages that a conditional answer for the collection cannot refresh.
+func flowRequiresFullPage(flow Flow) bool {
+	if _, ok := flow.(DetailFlow); ok {
+		return true
+	}
+	_, ok := flow.(PaginatedFlow)
+	return ok
 }
 
 func (p Poller) now() time.Time {

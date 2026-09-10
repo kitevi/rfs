@@ -6,6 +6,8 @@ import (
 	"github.com/ppowo/rfs/internal/sources/meltzer"
 	"github.com/ppowo/rfs/internal/sources/ptg"
 	"github.com/ppowo/rfs/internal/sources/seadex"
+	"github.com/ppowo/rfs/internal/sources/tplfvg"
+	"github.com/ppowo/rfs/internal/sources/trenitaliascioperi"
 )
 
 func All() []rfs.Source {
@@ -20,6 +22,30 @@ func All() []rfs.Source {
 				ItemDescriptionsHTML: true,
 			},
 			Flow: seadex.Flow{CachedMetadataURL: seadex.CachedMetadataURL},
+		},
+		{
+			ID:  "tpl-fvg-scioperi",
+			URL: tplfvg.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "TPL FVG bus strike notices",
+				Description: "Operator-confirmed strike notices for Arriva Udine, Trieste Trasporti and APT Gorizia (including Monfalcone); published when covered services may be disrupted.",
+				Link:        tplfvg.HumanURL,
+			},
+			Flow: tplfvg.Flow{},
+			// A subscriber of a new feed should see the notices already in force
+			// rather than an empty feed until the next upstream edit.
+			EmitInitial: true,
+		},
+		{
+			ID:  "trenitalia-scioperi",
+			URL: trenitaliascioperi.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "Trenitalia strike notices affecting FVG",
+				Description: "Trenitalia passenger-service strike notices that affect travel in Friuli Venezia Giulia, including national notices whose scope covers the region.",
+				Link:        trenitaliascioperi.HumanURL,
+			},
+			Flow:        trenitaliascioperi.Flow{},
+			EmitInitial: true,
 		},
 		{
 			ID:  "meltzer-5-star-matches",

@@ -19,11 +19,7 @@ type PageInfo struct {
 	TotalItems int `json:"totalItems"`
 }
 
-func (p Poller) extractPages(ctx context.Context, source Source, first Page) ([]ExtractedItem, error) {
-	flow, ok := source.Flow.(PaginatedFlow)
-	if !ok {
-		return source.Flow.Extract(first)
-	}
+func (p Poller) extractPages(ctx context.Context, source Source, flow PaginatedFlow, first Page) ([]ExtractedItem, error) {
 	info, err := flow.Pagination(first)
 	if err != nil {
 		return nil, err

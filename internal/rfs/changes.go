@@ -37,7 +37,17 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 		return PollResult{}, err
 	}
 	var changes []ExtractedItem
-	if previous.Initialized && previous.Version == flow.Version() {
+	switch {
+	case !previous.Initialized:
+		// The first complete observation is the feed's starting point. Sources
+		// that opt in publish it; everything else starts from silence.
+		if source.EmitInitial {
+			changes, err = flow.Changes(nil, current)
+			if err != nil {
+				return PollResult{}, err
+			}
+		}
+	case previous.Version == flow.Version():
 		changes, err = flow.Changes(previous.Items, current)
 		if err != nil {
 			return PollResult{}, err
