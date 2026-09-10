@@ -47,7 +47,13 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 				return PollResult{}, err
 			}
 		}
-	case previous.Version == flow.Version():
+	case previous.Version == flow.Version() || source.EmitVersionChanges:
+		// A matching version compares as usual. A Source that opted in also
+		// compares across an extraction-version change, so a widened Flow can
+		// publish its newly covered observations instead of dropping them
+		// behind a silent rebaseline. The Flow has to treat an older payload as
+		// comparison state; a bump that changes every payload announces the
+		// whole feed again, which is why this stays opt-in.
 		changes, err = flow.Changes(previous.Items, current)
 		if err != nil {
 			return PollResult{}, err

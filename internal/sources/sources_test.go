@@ -8,8 +8,7 @@ import (
 	"github.com/ppowo/rfs/internal/sources"
 	"github.com/ppowo/rfs/internal/sources/film"
 	"github.com/ppowo/rfs/internal/sources/ptg"
-	"github.com/ppowo/rfs/internal/sources/tplfvg"
-	"github.com/ppowo/rfs/internal/sources/trenitaliascioperi"
+	"github.com/ppowo/rfs/internal/sources/trenitalia"
 )
 
 func TestAllIncludesPTGSource(t *testing.T) {
@@ -70,8 +69,10 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 		"ptg":                    true,
 		"film":                   true,
 		"seadex":                 true,
-		"tpl-fvg-scioperi":       true,
-		"trenitalia-scioperi":    true,
+		"trenitalia-disruptions": true,
+		"arriva-udine":           true,
+		"trieste-trasporti":      true,
+		"apt-gorizia":            true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -83,61 +84,21 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 6 {
-		t.Fatalf("len(sources.All()) = %d, want 6", len(all))
+	if len(all) != 8 {
+		t.Fatalf("len(sources.All()) = %d, want 8", len(all))
 	}
 }
 
-// TestAllRegistersBusStrikeFeed pins the TPL FVG registration: official URLs,
-// plain-text metadata and a change feed that fetches notice details.
-func TestAllRegistersBusStrikeFeed(t *testing.T) {
+func TestAllRegistersRailFeed(t *testing.T) {
 	for _, source := range sources.All() {
-		if source.ID != "tpl-fvg-scioperi" {
+		if source.ID != "trenitalia-disruptions" {
 			continue
 		}
-		if source.URL != tplfvg.PageURL {
-			t.Fatalf("source URL = %q, want %q", source.URL, tplfvg.PageURL)
+		if source.URL != trenitalia.PageURL {
+			t.Fatalf("source URL = %q, want %q", source.URL, trenitalia.PageURL)
 		}
-		if source.Meta.Link != tplfvg.HumanURL {
-			t.Fatalf("source link = %q, want %q", source.Meta.Link, tplfvg.HumanURL)
-		}
-		if source.Meta.Title == "" || source.Meta.Description == "" {
-			t.Fatalf("source metadata is incomplete: %#v", source.Meta)
-		}
-		if source.Meta.ItemDescriptionsHTML {
-			t.Fatal("upstream notice text must not be rendered as HTML")
-		}
-		if source.History != nil {
-			t.Fatal("strike feeds use ChangeFlow, not catalog history")
-		}
-		if !source.EmitInitial {
-			t.Fatal("the notices already in force must be published on the first run")
-		}
-		if source.Flow.Version() != tplfvg.ExtractVersion {
-			t.Fatalf("flow version = %d, want %d", source.Flow.Version(), tplfvg.ExtractVersion)
-		}
-		if _, ok := source.Flow.(rfs.ChangeFlow); !ok {
-			t.Fatal("the bus strike Flow must compare complete observations")
-		}
-		if _, ok := source.Flow.(rfs.DetailFlow); !ok {
-			t.Fatal("the bus strike Flow must declare the notice pages it needs")
-		}
-		return
-	}
-	t.Fatal("sources.All does not include the tpl-fvg-scioperi source")
-}
-
-// TestAllRegistersRailStrikeFeed pins the Trenitalia registration.
-func TestAllRegistersRailStrikeFeed(t *testing.T) {
-	for _, source := range sources.All() {
-		if source.ID != "trenitalia-scioperi" {
-			continue
-		}
-		if source.URL != trenitaliascioperi.PageURL {
-			t.Fatalf("source URL = %q, want %q", source.URL, trenitaliascioperi.PageURL)
-		}
-		if source.Meta.Link != trenitaliascioperi.HumanURL {
-			t.Fatalf("source link = %q, want %q", source.Meta.Link, trenitaliascioperi.HumanURL)
+		if source.Meta.Link != trenitalia.HumanURL {
+			t.Fatalf("source link = %q, want %q", source.Meta.Link, trenitalia.HumanURL)
 		}
 		if source.Meta.Title == "" || source.Meta.Description == "" {
 			t.Fatalf("source metadata is incomplete: %#v", source.Meta)
@@ -148,22 +109,42 @@ func TestAllRegistersRailStrikeFeed(t *testing.T) {
 		if source.EmitInitial != true {
 			t.Fatal("the notices already in force must be published on the first run")
 		}
-		if source.Flow.Version() != trenitaliascioperi.ExtractVersion {
-			t.Fatalf("flow version = %d, want %d", source.Flow.Version(), trenitaliascioperi.ExtractVersion)
+		if source.Flow.Version() != trenitalia.ExtractVersion {
+			t.Fatalf("flow version = %d, want %d", source.Flow.Version(), trenitalia.ExtractVersion)
+		}
+		if !source.EmitVersionChanges {
+			t.Fatal("the widened rail scope must reach subscribers from before the widening")
 		}
 		if _, ok := source.Flow.(rfs.ChangeFlow); !ok {
-			t.Fatal("the rail strike Flow must compare complete observations")
+			t.Fatal("the rail notice Flow must compare complete observations")
 		}
 		return
 	}
-	t.Fatal("sources.All does not include the trenitalia-scioperi source")
+	t.Fatal("sources.All does not include the trenitalia-disruptions source")
 }
 
-// TestOnlyStrikeFeedsPublishTheirFirstObservation pins the initial-emission
-// opt-in to the two operator strike feeds: SeaDex and every projection feed
-// keep ADR 0008's silent baseline.
-func TestOnlyStrikeFeedsPublishTheirFirstObservation(t *testing.T) {
-	want := map[string]bool{"tpl-fvg-scioperi": true, "trenitalia-scioperi": true}
+// TestOnlyRailFeedComparesAcrossExtractVersionChanges pins the version-change
+// opt-in: a Source may compare across a bump only when its Flow treats an older
+// stored payload as state rather than as a change, which today means the rail
+// Flow.
+func TestOnlyRailFeedComparesAcrossExtractVersionChanges(t *testing.T) {
+	for _, source := range sources.All() {
+		if source.EmitVersionChanges && source.ID != "trenitalia-disruptions" {
+			t.Fatalf("source %s compares across a version change unexpectedly", source.ID)
+		}
+	}
+}
+
+// TestOnlyOperatorFeedsPublishTheirFirstObservation pins the initial-emission
+// opt-in to the operator notice feeds: SeaDex and every projection feed keep
+// ADR 0008's silent baseline.
+func TestOnlyOperatorFeedsPublishTheirFirstObservation(t *testing.T) {
+	want := map[string]bool{
+		"trenitalia-disruptions": true,
+		"arriva-udine":           true,
+		"trieste-trasporti":      true,
+		"apt-gorizia":            true,
+	}
 	for _, source := range sources.All() {
 		if source.EmitInitial && !want[source.ID] {
 			t.Fatalf("source %s publishes its first observation unexpectedly", source.ID)
@@ -175,7 +156,7 @@ func TestOnlyStrikeFeedsPublishTheirFirstObservation(t *testing.T) {
 }
 
 // TestAllSourceRegistrationsAreUniqueAndWellFormed verifies every registration,
-// not just the strike feeds.
+// not just the operator notice feeds.
 func TestAllSourceRegistrationsAreUniqueAndWellFormed(t *testing.T) {
 	seen := map[string]bool{}
 	for _, source := range sources.All() {

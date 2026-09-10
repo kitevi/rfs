@@ -1,4 +1,4 @@
-package trenitaliascioperi_test
+package trenitalia_test
 
 import (
 	"context"
@@ -12,9 +12,10 @@ import (
 )
 
 // Run explicitly on the deployment host; never contacts upstream in normal
-// tests. Trenitalia publishes strike notices only while a strike is pending, so
-// zero notices is a valid live result and is reported rather than failed. A
-// page that no longer parses fails, because that is a real structural break.
+// tests. Trenitalia publishes notices only while something is disrupting
+// service, so zero applicable notices is a valid live result and is reported
+// rather than failed. A page that no longer parses fails, because that is a real
+// structural break.
 func TestLiveTrenitalia(t *testing.T) {
 	if os.Getenv("RFS_TEST_TRENITALIA_LIVE") != "1" {
 		t.Skip("set RFS_TEST_TRENITALIA_LIVE=1 to probe trenitalia.com")
@@ -28,7 +29,7 @@ func TestLiveTrenitalia(t *testing.T) {
 	defer store.Close()
 	poller := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(&http.Client{Timeout: 30 * time.Second}), Store: store}
 	for _, source := range sources.All() {
-		if source.ID != "trenitalia-scioperi" {
+		if source.ID != "trenitalia-disruptions" {
 			continue
 		}
 		result, err := poller.Poll(ctx, source)
@@ -46,7 +47,7 @@ func TestLiveTrenitalia(t *testing.T) {
 			t.Fatal("poll did not establish a baseline")
 		}
 		if len(state.Items) == 0 {
-			t.Log("live probe: no strike notice is currently published for FVG; upstream strike coverage is unverified until one appears")
+			t.Log("live probe: no applicable disruption is currently published for FVG; upstream coverage is unverified until one appears")
 			return
 		}
 		t.Logf("live baseline: %d applicable notices", len(state.Items))
@@ -55,5 +56,5 @@ func TestLiveTrenitalia(t *testing.T) {
 		}
 		return
 	}
-	t.Fatal("trenitalia-scioperi is not registered")
+	t.Fatal("trenitalia-disruptions is not registered")
 }

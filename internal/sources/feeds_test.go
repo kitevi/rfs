@@ -13,8 +13,10 @@ import (
 
 	"github.com/ppowo/rfs/internal/rfs"
 	"github.com/ppowo/rfs/internal/sources"
-	"github.com/ppowo/rfs/internal/sources/tplfvg"
-	"github.com/ppowo/rfs/internal/sources/trenitaliascioperi"
+	"github.com/ppowo/rfs/internal/sources/aptgorizia"
+	"github.com/ppowo/rfs/internal/sources/arrivaudine"
+	"github.com/ppowo/rfs/internal/sources/trenitalia"
+	"github.com/ppowo/rfs/internal/sources/triestetrasporti"
 )
 
 type fixtureFetcher struct {
@@ -83,20 +85,16 @@ func pollFixture(t *testing.T, source rfs.Source, routes map[string]rfs.Page) []
 	return pollIntoStore(t, store, source, routes)
 }
 
-// TestStrikeFeedEndpointsRender serves both strike feeds through the HTTP
+// TestOperatorFeedEndpointsRender serves both operator feeds through the HTTP
 // handler, so the RSS and HTML routes subscribers use are exercised end to end.
-func TestStrikeFeedEndpointsRender(t *testing.T) {
+func TestOperatorFeedEndpointsRender(t *testing.T) {
 	store, err := rfs.OpenInMemorySQLiteStore()
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
 	t.Cleanup(func() { store.Close() })
-	pollIntoStore(t, store, sourceByID(t, "tpl-fvg-scioperi"), map[string]rfs.Page{
-		tplfvg.PageURL: fixture(t, "tplfvg/testdata/scioperi_index.html"),
-		"https://tplfvg.it/it/servizi/scioperi/10set26/": fixture(t, "tplfvg/testdata/sciopero_udine_10set26.html"),
-	})
-	pollIntoStore(t, store, sourceByID(t, "trenitalia-scioperi"), map[string]rfs.Page{
-		trenitaliascioperi.PageURL: fixture(t, "trenitaliascioperi/testdata/notizie_20260905.html"),
+	pollIntoStore(t, store, sourceByID(t, "trenitalia-disruptions"), map[string]rfs.Page{
+		trenitalia.PageURL: fixture(t, "trenitalia/testdata/notizie_20260905.html"),
 	})
 
 	handler := rfs.NewHTTPHandler(store, sources.All(), rfs.BuildInfo{})
@@ -104,10 +102,8 @@ func TestStrikeFeedEndpointsRender(t *testing.T) {
 		path string
 		want string
 	}{
-		{"/feeds/tpl-fvg-scioperi.xml", "10set26"},
-		{"/feeds/tpl-fvg-scioperi.html", "10set26"},
-		{"/feeds/trenitalia-scioperi.xml", "sciopero nazionale"},
-		{"/feeds/trenitalia-scioperi.html", "sciopero nazionale"},
+		{"/feeds/trenitalia-disruptions.xml", "sciopero nazionale"},
+		{"/feeds/trenitalia-disruptions.html", "sciopero nazionale"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.path, func(t *testing.T) {
@@ -118,6 +114,64 @@ func TestStrikeFeedEndpointsRender(t *testing.T) {
 			}
 			if !strings.Contains(recorder.Body.String(), tc.want) {
 				t.Fatalf("%s body does not contain %q: %.300s", tc.path, tc.want, recorder.Body.String())
+			}
+		})
+	}
+}
+
+// TestPerOperatorFeedsPublishTheirOwnNotices polls each operator feed with its
+// captured page and serves the result through the HTTP handler, so the feed a
+// subscriber picks per operator is exercised end to end.
+func TestPerOperatorFeedsPublishTheirOwnNotices(t *testing.T) {
+	store, err := rfs.OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	cases := []struct {
+		id      string
+		url     string
+		fixture string
+		label   string
+		notice  string
+		count   int
+	}{
+		{"trieste-trasporti", triestetrasporti.PageURL, "triestetrasporti/testdata/avvisi_20260910.html", "[Bus · Trieste Trasporti] ", "Maltempo, tutte le deviazioni in vigore", 9},
+		{"arriva-udine", arrivaudine.PageURL, "arrivaudine/testdata/notices_20260910.json", "[Bus · Arriva Udine] ", "Avviso di sciopero di 4 ore per il giorno 10 settembre 2026", 10},
+		{"apt-gorizia", aptgorizia.PageURL, "aptgorizia/testdata/avvisi_20260910.html", "[Bus · APT Gorizia] ", "Moraro, fermate sospese per processione il 08/09/2026", 6},
+	}
+	handler := rfs.NewHTTPHandler(store, sources.All(), rfs.BuildInfo{})
+	for _, tc := range cases {
+		t.Run(tc.id, func(t *testing.T) {
+			source := sourceByID(t, tc.id)
+			items := pollIntoStore(t, store, source, map[string]rfs.Page{tc.url: fixture(t, tc.fixture)})
+			if len(items) != tc.count {
+				t.Fatalf("first run emitted %d items, want %d", len(items), tc.count)
+			}
+			found := false
+			for _, item := range items {
+				if !strings.HasPrefix(item.Title, tc.label) {
+					t.Fatalf("title = %q, want the %q label", item.Title, tc.label)
+				}
+				if strings.Contains(item.Title, tc.notice) {
+					found = true
+				}
+			}
+			if !found {
+				t.Fatalf("no item carries %q", tc.notice)
+			}
+			for _, path := range []string{"/feeds/" + tc.id + ".xml", "/feeds/" + tc.id + ".html"} {
+				recorder := httptest.NewRecorder()
+				handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+				if recorder.Code != http.StatusOK {
+					t.Fatalf("%s status = %d, want 200", path, recorder.Code)
+				}
+				if !strings.Contains(recorder.Body.String(), tc.notice) {
+					t.Fatalf("%s body does not carry %q", path, tc.notice)
+				}
+				if strings.Contains(recorder.Body.String(), "<script") {
+					t.Fatalf("%s rendered markup from upstream text", path)
+				}
 			}
 		})
 	}
@@ -136,21 +190,66 @@ func renderBoth(t *testing.T, source rfs.Source, items []rfs.Item) (rss string, 
 	return string(rssBytes), string(htmlBytes)
 }
 
-func TestBusFeedPublishesActiveNoticeOnFirstRun(t *testing.T) {
-	source := sourceByID(t, "tpl-fvg-scioperi")
-	detail := "tplfvg/testdata/sciopero_udine_10set26.html"
-	items := pollFixture(t, source, map[string]rfs.Page{
-		tplfvg.PageURL: fixture(t, "tplfvg/testdata/scioperi_index.html"),
-		"https://tplfvg.it/it/servizi/scioperi/10set26/": fixture(t, detail),
-	})
+func TestRailFeedHandsExistingSubscribersTheBroaderScope(t *testing.T) {
+	ctx := context.Background()
+	store, err := rfs.OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	source := sourceByID(t, "trenitalia-disruptions")
+	page := fixture(t, "trenitalia/testdata/notizie_20260905.html")
+	extracted, err := trenitalia.Flow{}.Extract(page)
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	strikeGUID := trenitalia.HumanURL + "#infomobility_summary_548526369"
+	var legacy []rfs.ExtractedItem
+	for _, item := range extracted {
+		if item.GUID == strikeGUID {
+			legacy = append(legacy, item)
+		}
+	}
+	if len(legacy) != 1 {
+		t.Fatalf("fixture no longer carries the strike notice: %#v", extracted)
+	}
+	// An earlier build stored strike notices only, at extraction version 1.
+	if err := store.SaveChanges(ctx, source.ID, rfs.ChangeState{Items: legacy, Version: 1, Revision: 1, Initialized: true}, nil, rfs.FetchCache{ExtractVersion: 1}); err != nil {
+		t.Fatalf("seed legacy baseline: %v", err)
+	}
+
+	items := pollIntoStore(t, store, source, map[string]rfs.Page{trenitalia.PageURL: page})
 	if len(items) != 1 {
-		t.Fatalf("first run emitted %d items, want the notice in force", len(items))
+		t.Fatalf("upgrade emitted %#v, want only the newly covered works page", items)
 	}
-	if items[0].GUID != "tpl-fvg-scioperi:1:https://tplfvg.it/it/servizi/scioperi/10set26/" {
-		t.Fatalf("GUID = %q, want a revision-qualified permalink", items[0].GUID)
+	want := "trenitalia-disruptions:2:" + trenitalia.HumanURL + "#infomobility_summary_1720830883"
+	if items[0].GUID != want {
+		t.Fatalf("GUID = %q, want %q", items[0].GUID, want)
 	}
-	if !strings.HasPrefix(items[0].Title, "[Bus · Arriva Udine] ") {
-		t.Fatalf("title = %q, want the Arriva Udine notice", items[0].Title)
+	if !strings.HasPrefix(items[0].Title, "[Treni · FVG] ") {
+		t.Fatalf("title = %q, want an FVG scope label", items[0].Title)
+	}
+}
+
+func TestRailFeedPublishesArchivedStrikeAndFVGDisruptions(t *testing.T) {
+	source := sourceByID(t, "trenitalia-disruptions")
+	items := pollFixture(t, source, map[string]rfs.Page{
+		trenitalia.PageURL: fixture(t, "trenitalia/testdata/notizie_20260905.html"),
+	})
+	if len(items) != 2 {
+		t.Fatalf("first run emitted %d items, want the national strike and the FVG works page", len(items))
+	}
+	titles := map[string]string{}
+	for _, item := range items {
+		titles[item.GUID] = item.Title
+	}
+	strike := "trenitalia-disruptions:1:" + trenitalia.HumanURL + "#infomobility_summary_548526369"
+	if title := titles[strike]; !strings.HasPrefix(title, "[Treni · Nazionale] ") {
+		t.Fatalf("strike title = %q, want a national scope label", title)
+	}
+	works := "trenitalia-disruptions:1:" + trenitalia.HumanURL + "#infomobility_summary_1720830883"
+	if title := titles[works]; !strings.HasPrefix(title, "[Treni · FVG] ") {
+		t.Fatalf("works title = %q, want an FVG scope label", title)
 	}
 	rss, html := renderBoth(t, source, items)
 	for _, document := range []struct {
@@ -160,69 +259,11 @@ func TestBusFeedPublishesActiveNoticeOnFirstRun(t *testing.T) {
 		{"RSS", rss},
 		{"HTML", html},
 	} {
-		if !strings.Contains(document.body, "10set26") {
-			t.Fatalf("%s output does not link the notice: %.400s", document.name, document.body)
+		if !strings.Contains(document.body, "sciopero nazionale") {
+			t.Fatalf("%s output lost the strike notice: %.400s", document.name, document.body)
 		}
-		if !strings.Contains(document.body, "Possibili cancellazioni") {
-			t.Fatalf("%s output lost the notice summary: %.400s", document.name, document.body)
+		if !strings.Contains(document.body, "INFOLAVORI FRIULI VENEZIA GIULIA") {
+			t.Fatalf("%s output lost the works page: %.400s", document.name, document.body)
 		}
-	}
-}
-
-func TestBusFeedEscapesUpstreamText(t *testing.T) {
-	source := sourceByID(t, "tpl-fvg-scioperi")
-	index := fixture(t, "tplfvg/testdata/scioperi_index.html")
-	detail := string(fixture(t, "tplfvg/testdata/sciopero_udine_10set26.html"))
-	detail = strings.Replace(detail,
-		"Possibili cancellazioni e ritardi su tutta la rete",
-		"Possibili cancellazioni &lt;script&gt;alert(1)&lt;/script&gt; su tutta la rete", 1)
-	items := pollFixture(t, source, map[string]rfs.Page{
-		tplfvg.PageURL: index,
-		"https://tplfvg.it/it/servizi/scioperi/10set26/": rfs.Page(detail),
-	})
-	if len(items) != 1 {
-		t.Fatalf("emitted %d items, want 1", len(items))
-	}
-	if !strings.Contains(items[0].Description, "<script>alert(1)</script>") {
-		t.Fatalf("test fixture did not carry the injection text: %q", items[0].Description)
-	}
-	rss, html := renderBoth(t, source, items)
-	for _, document := range []struct {
-		name string
-		body string
-	}{
-		{"RSS", rss},
-		{"HTML", html},
-	} {
-		if strings.Contains(document.body, "<script>alert(1)</script>") {
-			t.Fatalf("%s output rendered upstream text as markup", document.name)
-		}
-		if !strings.Contains(document.body, "&lt;script&gt;alert(1)&lt;/script&gt;") {
-			t.Fatalf("%s output dropped or re-encoded the notice text: %.400s", document.name, document.body)
-		}
-	}
-}
-
-func TestRailFeedPublishesArchivedNationalStrike(t *testing.T) {
-	source := sourceByID(t, "trenitalia-scioperi")
-	items := pollFixture(t, source, map[string]rfs.Page{
-		trenitaliascioperi.PageURL: fixture(t, "trenitaliascioperi/testdata/notizie_20260905.html"),
-	})
-	if len(items) != 1 {
-		t.Fatalf("first run emitted %d items, want the national notice", len(items))
-	}
-	wantGUID := "trenitalia-scioperi:1:" + trenitaliascioperi.HumanURL + "#infomobility_summary_548526369"
-	if items[0].GUID != wantGUID {
-		t.Fatalf("GUID = %q, want %q", items[0].GUID, wantGUID)
-	}
-	if !strings.HasPrefix(items[0].Title, "[Treni · Nazionale] ") {
-		t.Fatalf("title = %q, want a national scope label", items[0].Title)
-	}
-	rss, html := renderBoth(t, source, items)
-	if !strings.Contains(rss, "Infomobilità") && !strings.Contains(rss, "sciopero nazionale") {
-		t.Fatalf("RSS output lost the notice: %.400s", rss)
-	}
-	if !strings.Contains(html, "sciopero nazionale") {
-		t.Fatalf("HTML output lost the notice: %.400s", html)
 	}
 }

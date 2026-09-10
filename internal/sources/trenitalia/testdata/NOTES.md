@@ -1,4 +1,4 @@
-# trenitaliascioperi fixtures
+# Trenitalia fixtures
 
 All fixtures come from Trenitalia's official Infomobilità page
 `https://www.trenitalia.com/it/informazioni/Infomobilita/notizie-infomobilita.html`,
@@ -30,9 +30,19 @@ derived fixtures, not upstream evidence.
 | `notizie_national_freight.html` | body replaced with a freight-only statement and the title changed to a freight-sector strike; region tags left unchanged |
 | `notizie_national_untagged.html` | `data-region` set to `empty` while the text still describes a national strike |
 
+
+## Derived variant: restoration
+
+| Fixture | Change |
+| --- | --- |
+| `notizie_fvg_restored.html` | `notizie_20260910.html` with the captured Venezia - Trieste weather bulletin's title and lead rewritten to the operator's later `circolazione regolare dalle ore 20:00 dopo condizioni meteo critiche` wording, so the restoration lifecycle has a fixture |
+
+The widened scope reads two notices out of `notizie_20260910.html`: the captured
+FVG-tagged weather bulletin (`infomobility_summary_1594016248`) and the region's
+works page (`infomobility_summary_1720830883`).
+
 ## Not represented
 
 No captured notice is specific to Friuli Venezia Giulia alone, no revision is
 identified by anything other than the AEM component id in its `id` attributes,
-and upstream did not revoke any of the captured notices. Those limits are
-recorded in `docs/adr/0009-operator-confirmed-strike-feeds.md`.
+and upstream did not revoke any of the captured notices.

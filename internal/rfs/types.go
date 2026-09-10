@@ -62,6 +62,15 @@ type Source struct {
 	// behavior (SeaDex and any Flow whose first observation must not announce).
 	EmitInitial bool
 
+	// EmitVersionChanges compares the stored baseline with a re-derived
+	// observation when the Flow's extraction version changes, instead of
+	// replacing the baseline in silence. It is for a Flow whose own comparison
+	// treats an older stored payload as state rather than as a change: a
+	// broader scope then hands existing subscribers the coverage they were
+	// missing. A Flow that cannot compare older payloads announces its whole
+	// feed again on every bump, so the zero value keeps the silent rebaseline.
+	EmitVersionChanges bool
+
 	// History, when non-nil, enables accumulation instead of replace.
 	// Nil preserves the original current-state projection (e.g. meltzer).
 	History *HistoryPolicy

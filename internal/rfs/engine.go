@@ -69,11 +69,12 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 	}
 
 	// A collection validator only proves that the collection bytes are
-	// unchanged. It says nothing about the secondary pages that carry observed
+	// unchanged. It says nothing about the additional pages that carry observed
 	// state, so those Flows always fetch the collection unconditionally.
 	if flowRequiresFullPage(source.Flow) {
 		requestCache = FetchCache{}
 	}
+
 	fetchResult, err := p.Fetcher.Fetch(ctx, source.URL, requestCache)
 	if err != nil {
 		return PollResult{}, err
@@ -166,12 +167,18 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 	return PollResult{Status: PollUpdated}, nil
 }
 
-// flowRequiresFullPage reports whether a Flow's observed state depends on
-// secondary pages that a conditional answer for the collection cannot refresh.
-func flowRequiresFullPage(flow Flow) bool {
-	if _, ok := flow.(DetailFlow); ok {
-		return true
+// extractObservation derives items for a Source, fetching any additional pages
+// its Flow declares before extraction.
+func (p Poller) extractObservation(ctx context.Context, source Source, first Page) ([]ExtractedItem, error) {
+	if flow, ok := source.Flow.(PaginatedFlow); ok {
+		return p.extractPages(ctx, source, flow, first)
 	}
+	return source.Flow.Extract(first)
+}
+
+// flowRequiresFullPage reports whether a Flow's observed state depends on pages
+// that a conditional answer for the collection cannot refresh.
+func flowRequiresFullPage(flow Flow) bool {
 	_, ok := flow.(PaginatedFlow)
 	return ok
 }
@@ -182,13 +189,3 @@ func (p Poller) now() time.Time {
 	}
 	return p.Clock.Now()
 }
-
-var _ Flow = flowFunc(nil)
-
-type flowFunc func(Page) ([]ExtractedItem, error)
-
-func (f flowFunc) Extract(page Page) ([]ExtractedItem, error) { return f(page) }
-
-// Version is 0 for ad-hoc flowFuncs, so they never trigger a version-driven
-// re-derive. Named Flows declare their own version (see meltzer.Flow).
-func (flowFunc) Version() int { return 0 }

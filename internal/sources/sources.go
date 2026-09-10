@@ -2,12 +2,15 @@ package sources
 
 import (
 	"github.com/ppowo/rfs/internal/rfs"
+	"github.com/ppowo/rfs/internal/sources/aptgorizia"
+	"github.com/ppowo/rfs/internal/sources/arrivaudine"
 	"github.com/ppowo/rfs/internal/sources/film"
 	"github.com/ppowo/rfs/internal/sources/meltzer"
+	"github.com/ppowo/rfs/internal/sources/notices"
 	"github.com/ppowo/rfs/internal/sources/ptg"
 	"github.com/ppowo/rfs/internal/sources/seadex"
-	"github.com/ppowo/rfs/internal/sources/tplfvg"
-	"github.com/ppowo/rfs/internal/sources/trenitaliascioperi"
+	"github.com/ppowo/rfs/internal/sources/trenitalia"
+	"github.com/ppowo/rfs/internal/sources/triestetrasporti"
 )
 
 func All() []rfs.Source {
@@ -24,28 +27,55 @@ func All() []rfs.Source {
 			Flow: seadex.Flow{CachedMetadataURL: seadex.CachedMetadataURL},
 		},
 		{
-			ID:  "tpl-fvg-scioperi",
-			URL: tplfvg.PageURL,
+			ID:  "arriva-udine",
+			URL: arrivaudine.PageURL,
 			Meta: rfs.SourceMeta{
-				Title:       "TPL FVG bus strike notices",
-				Description: "Operator-confirmed strike notices for Arriva Udine, Trieste Trasporti and APT Gorizia (including Monfalcone); published when covered services may be disrupted.",
-				Link:        tplfvg.HumanURL,
+				Title:       "Arriva Udine service notices",
+				Description: "Notices Arriva Udine publishes for the services it runs: strikes, timetable changes, route and stop changes and the works that alter them. The operator keeps old notices in the same archive, so the feed reads only the newest window.",
+				Link:        arrivaudine.HumanURL,
 			},
-			Flow: tplfvg.Flow{},
-			// A subscriber of a new feed should see the notices already in force
-			// rather than an empty feed until the next upstream edit.
+			Flow:        notices.Flow{Operator: "Arriva Udine", Parser: arrivaudine.ParseNotices},
 			EmitInitial: true,
 		},
 		{
-			ID:  "trenitalia-scioperi",
-			URL: trenitaliascioperi.PageURL,
+			ID:  "trieste-trasporti",
+			URL: triestetrasporti.PageURL,
 			Meta: rfs.SourceMeta{
-				Title:       "Trenitalia strike notices affecting FVG",
-				Description: "Trenitalia passenger-service strike notices that affect travel in Friuli Venezia Giulia, including national notices whose scope covers the region.",
-				Link:        trenitaliascioperi.HumanURL,
+				Title:       "Trieste Trasporti service notices",
+				Description: "The notices Trieste Trasporti lists as in force: diversions, suspended stops and lines, weather and technical disruption, and timetable changes. Notices the operator has moved to its archive are never published.",
+				Link:        triestetrasporti.HumanURL,
 			},
-			Flow:        trenitaliascioperi.Flow{},
+			Flow:        notices.Flow{Operator: "Trieste Trasporti", Parser: triestetrasporti.ParseNotices},
 			EmitInitial: true,
+		},
+		{
+			ID:  "apt-gorizia",
+			URL: aptgorizia.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "APT Gorizia service notices",
+				Description: "The service notices and route diversions APT Gorizia lists in its summary of the changes in force, covering the Gorizia network and the Monfalcone urban network it runs.",
+				Link:        aptgorizia.HumanURL,
+			},
+			Flow:        notices.Flow{Operator: "APT Gorizia", Parser: aptgorizia.ParseNotices},
+			EmitInitial: true,
+		},
+		{
+			ID:  "trenitalia-disruptions",
+			URL: trenitalia.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "Trenitalia disruptions affecting FVG",
+				Description: "Trenitalia notices that disrupt passenger services through Friuli Venezia Giulia: strikes, weather and technical incidents, delays, suspensions and planned works, including national notices whose scope covers the region.",
+				Link:        trenitalia.HumanURL,
+			},
+			Flow: trenitalia.Flow{},
+			// A subscriber of a new feed should see the notices already in force
+			// rather than an empty feed until the next upstream edit.
+			EmitInitial: true,
+			// Subscribers from before the widening keep their history and still
+			// receive the disruptions the wider scope now covers, so a version
+			// change compares against the stored baseline instead of rebaselining
+			// in silence. The Flow compares an older payload as state.
+			EmitVersionChanges: true,
 		},
 		{
 			ID:  "meltzer-5-star-matches",

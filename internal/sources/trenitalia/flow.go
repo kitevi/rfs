@@ -1,12 +1,12 @@
-// Package trenitaliascioperi watches Trenitalia's operator notices for strike
+// Package trenitalia watches Trenitalia's operator notices for
 // disruption that reaches Friuli Venezia Giulia.
 //
-// Trenitalia publishes strike notices on its Infomobilità page alongside
-// real-time disruption bulletins and empty per-region info stubs. Each notice
-// carries an AEM component identifier in its markup, the regions it applies to,
-// a publication date and its full body text, so a single page fetch is enough
-// to identify and classify it.
-package trenitaliascioperi
+// Trenitalia publishes strike notices, real-time incident bulletins, per-region
+// works pages and standing information pages on one Infomobilità page. Each
+// notice carries an AEM component identifier in its markup, the regions it
+// applies to, a publication date and its full body text, so a single page fetch
+// is enough to identify and classify it.
+package trenitalia
 
 import (
 	"encoding/json"
@@ -29,11 +29,15 @@ const (
 
 	// ExtractVersion is bumped whenever Extract or Changes output can change for
 	// a fixed page.
-	ExtractVersion = 1
+	ExtractVersion = 2
 
 	payloadVersion = 1
 	statusActive   = "Attivo"
 	statusRevoked  = "Revocato"
+	// statusRestored marks a notice whose title states that an earlier
+	// disruption is over. It is a terminal state: a first observation never
+	// announces one, only the transition of a tracked disruption.
+	statusRestored = "Ripristinato"
 
 	scopeFVG      = "FVG"
 	scopeNational = "Nazionale"
@@ -51,11 +55,34 @@ var (
 	// while a notice is edited in place.
 	componentPattern = regexp.MustCompile(`^(infomobility_summary_\d+)(?:-(?:title|category))?$`)
 
+	// restoredPattern accepts a title that announces the end of a disruption. A
+	// gradual resumption is not a restoration.
+	restoredPattern = regexp.MustCompile(`(?i)\bcircolazione\s+(?:è\s+)?regolare\b|\bservizio\s+(?:è\s+)?regolare\b|\bregolarmente\b|\bripristinat\w*\b|\btornat\w*\s+alla\s+normalità\b`)
+
+	// coveredRegionPattern names the covered region inside a standing page
+	// title, which carries no region tag to classify it.
+	coveredRegionPattern = regexp.MustCompile(`(?i)\bfriuli\b|\bvenezia\s*giulia\b|\bfvg\b`)
+
 	// Accept affirmative status statements, not mentions of a possible revocation.
 	revocationPattern   = regexp.MustCompile(`(?i)\b(?:revocat[oaie]\s+(?:(?:lo|il|la)\s+|l[’'])?(?:sciopero|agitazione)|(?:sciopero|agitazione)\s+(?:(?:è|sono|risulta|risultano)\s+(?:stat[oaie]\s+)?)?revocat[oaie]|(?:si comunica|si conferma)\s+la revoca\s+(?:dello sciopero|dell[’']agitazione))\b`)
 	revocationQualifier = regexp.MustCompile(`(?i)\b(?:non|se|qualora|eventuale|eventualmente|potrebbe|potrebbero|sarebbe|sarebbero)\b|\bin caso\b`)
 
-	strikeWords           = []string{"sciopero", "agitazione sindacale"}
+	// impactWords name an operational change to passenger services. A notice
+	// whose own title names none of them is a standing information page, not a
+	// disruption report.
+	impactWords = []string{
+		"agitazione sindacale", "allagament", "bus sostitutiv", "cancellat",
+		"cancellazion", "circolazione", "condizioni meteo", "corse con bus",
+		"deviazion", "graduale ripresa", "guasto", "inconveniente", "incendio",
+		"interrott", "interruzion", "lavori", "limitazion", "maltempo",
+		"modifiche al servizio", "rallentament", "regolare", "ripristin",
+		"ritard", "sciopero", "servizio sospeso", "sospension", "sospes",
+		"variazione", "variazion",
+	}
+	// standingPagePrefixes name notices that are per-region or national
+	// information pages rather than one event bulletin.
+	standingPagePrefixes = []string{"INFORMAZIONI", "INFOLAVORI", "INFOTRENI"}
+
 	freightWords          = []string{"merci", "cargo", "merciario"}
 	passengerOnlyWords    = []string{"viaggiatori", "passeggeri", "treni regionali", "servizio regionale", "servizi regionali", "trasporto regionale", "intercity", "frecce", "lunga percorrenza", "treni garantiti", "servizi garantiti"}
 	passengerServiceWords = append([]string{"treni", "treno", "regionale", "regionali", "circolazione", "servizi", "corse", "collegamenti"}, passengerOnlyWords...)
@@ -67,7 +94,7 @@ var (
 	coveredRouteWords = []string{"udine", "trieste", "gorizia", "monfalcone"}
 )
 
-// Flow extracts Trenitalia strike notices that affect travel in FVG.
+// Flow extracts Trenitalia notices that affect travel in FVG.
 type Flow struct{}
 
 func (Flow) Version() int { return ExtractVersion }
@@ -79,7 +106,7 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 	}
 	var items []rfs.ExtractedItem
 	for _, notice := range notices {
-		if !isStrikeNotice(notice.title, notice.body) {
+		if !isDisruptionNotice(notice.title) {
 			continue
 		}
 		scope, applicable := classification(notice.title, notice.body, notice.regions)
@@ -87,8 +114,11 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 			continue
 		}
 		status := statusActive
-		if isRevoked(notice.title + "\n" + notice.body) {
+		switch {
+		case isRevoked(notice.title + "\n" + notice.body):
 			status = statusRevoked
+		case isRestored(notice.title):
+			status = statusRestored
 		}
 		payload := noticePayload{
 			Version:    payloadVersion,
@@ -111,14 +141,14 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 }
 
 // Changes emits one item per observed difference. A notice that disappears or
-// expires is dropped without a cancellation claim, and a first observation
-// announces notices that are already published but never a revoked one.
+// expires is dropped without a cancellation claim. A disruption that is already
+// over when it is first observed — revoked or restored — is history rather than
+// news, so only a disruption tracked while it was active can announce its end.
 func (Flow) Changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem, error) {
 	stored := make(map[string]rfs.ExtractedItem, len(previous))
 	for _, item := range previous {
 		stored[item.GUID] = item
 	}
-	initial := len(previous) == 0
 	var changes []rfs.ExtractedItem
 	for _, item := range current {
 		after, err := decodeNotice(item)
@@ -128,7 +158,9 @@ func (Flow) Changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem,
 		before, seen := stored[item.GUID]
 		delete(stored, item.GUID)
 		if !seen {
-			if initial && after.Status == statusRevoked {
+			// A terminal notice is history, not news: only a disruption
+			// observed while it was active can announce its own end.
+			if after.Status == statusRevoked || after.Status == statusRestored {
 				continue
 			}
 			changes = append(changes, changeItem(item, noticeTitle(titlePrefix(after), after), announcementDescription(after)))
@@ -140,8 +172,11 @@ func (Flow) Changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem,
 			continue
 		}
 		prefix := "Aggiornato"
-		if after.Status == statusRevoked {
+		switch after.Status {
+		case statusRevoked:
 			prefix = "Revocato"
+		case statusRestored:
+			prefix = "Ripristinato"
 		}
 		changes = append(changes, changeItem(item, noticeTitle(prefix, after), updateDescription(after, fields)))
 	}
@@ -174,18 +209,18 @@ type noticeSection struct {
 func parseNotices(page rfs.Page) ([]noticeSection, error) {
 	doc, err := rfs.ParseHTML(page)
 	if err != nil {
-		return nil, fmt.Errorf("trenitaliascioperi: parse page: %w", err)
+		return nil, fmt.Errorf("trenitalia: parse page: %w", err)
 	}
 	root := findFirstByClass(doc, "div", "infomobility-list")
 	if root == nil {
 		root = findFirst(doc, "body")
 	}
 	if root == nil {
-		return nil, errors.New("trenitaliascioperi: page has no content")
+		return nil, errors.New("trenitalia: page has no content")
 	}
 	sections := findAllByClass(root, "div", "infomobility")
 	if len(sections) == 0 {
-		return nil, errors.New("trenitaliascioperi: no notice sections found")
+		return nil, errors.New("trenitalia: no notice sections found")
 	}
 	notices := make([]noticeSection, 0, len(sections))
 	for _, section := range sections {
@@ -202,7 +237,7 @@ func parseNotices(page rfs.Page) ([]noticeSection, error) {
 		notice.body = normalizeText(textOf(bodyRoot))
 		notice.links = bodyLinks(bodyRoot)
 		if notice.title != "" && notice.id == "" {
-			return nil, fmt.Errorf("trenitaliascioperi: notice %q has no upstream component id", notice.title)
+			return nil, fmt.Errorf("trenitalia: notice %q has no upstream component id", notice.title)
 		}
 		notices = append(notices, notice)
 	}
@@ -275,17 +310,27 @@ func bodyLinks(body *html.Node) []string {
 	return links
 }
 
-// isStrikeNotice accepts a notice that announces a strike in its title or in
-// its lead paragraph. Real-time disruption bulletins and standing pages about
-// guaranteed trains are not strike notices.
-func isStrikeNotice(title, body string) bool {
-	lead := body
-	if len(lead) > 240 {
-		lead = lead[:240]
-	}
-	lower := strings.ToLower(title + "\n" + lead)
-	for _, word := range strikeWords {
-		if strings.Contains(lower, word) {
+// isDisruptionNotice accepts a notice whose own title reports an operational
+// change to train services: a strike, an incident bulletin, or a region's works
+// page. The national high-speed delay list, the regional information index and
+// other standing pages name no impact in their titles and stay out of the feed.
+func isDisruptionNotice(title string) bool {
+	return containsAny(strings.ToLower(title), impactWords)
+}
+
+// isRestored reports whether the operator's own title announces the end of a
+// disruption. Text buried in an accumulated body cannot override the title, so
+// a stale "servizio regolare" line in an old update stays inert.
+func isRestored(title string) bool {
+	return restoredPattern.MatchString(title)
+}
+
+// standingPage reports whether a notice is a per-region or national information
+// page rather than one event bulletin.
+func standingPage(title string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(title))
+	for _, prefix := range standingPagePrefixes {
+		if strings.HasPrefix(upper, prefix) {
 			return true
 		}
 	}
@@ -307,10 +352,12 @@ func isRevoked(text string) bool {
 
 // classification reports the scope a notice covers. A notice tagged with
 // Friuli Venezia Giulia is local; an untagged notice only qualifies when its
-// own text establishes a national strike by Trenitalia/FS. Notices limited to
-// other regions, to freight, or to a personnel category with no passenger
-// service impact are rejected, and an ambiguous proclamation stays
-// unpublished.
+// own text establishes a national strike by Trenitalia/FS or writes about a
+// covered route. A standing page lists sections for several places, so only its
+// title can establish coverage: a body mention of an FVG line does not turn the
+// national information index into an FVG notice. Notices limited to other
+// regions, to freight, or to a personnel category with no passenger service
+// impact are rejected, and an ambiguous proclamation stays unpublished.
 func classification(title, body string, regions []string) (string, bool) {
 	text := strings.ToLower(title + "\n" + body)
 	if !hasPassengerService(text) {
@@ -320,7 +367,13 @@ func classification(title, body string, regions []string) (string, bool) {
 		return "", false
 	}
 	local := containsRegion(regions, fvgRegion)
-	route := containsAny(text, coveredRouteWords)
+	var route bool
+	if standingPage(title) {
+		local = local || coveredRegionPattern.MatchString(title)
+		route = containsAny(strings.ToLower(title), coveredRouteWords)
+	} else {
+		route = containsAny(text, coveredRouteWords)
+	}
 	national := containsAny(text, nationalScopeWords) && containsAny(text, nationalOperatorWords)
 	switch {
 	case (local || route) && (national || len(regions) >= nationalRegionThreshold):
@@ -359,10 +412,10 @@ func containsAny(text string, needles []string) bool {
 func decodeNotice(item rfs.ExtractedItem) (noticePayload, error) {
 	var payload noticePayload
 	if err := json.Unmarshal([]byte(item.Description), &payload); err != nil {
-		return noticePayload{}, fmt.Errorf("trenitaliascioperi: decode notice %s: %w", item.GUID, err)
+		return noticePayload{}, fmt.Errorf("trenitalia: decode notice %s: %w", item.GUID, err)
 	}
 	if payload.Version != payloadVersion {
-		return noticePayload{}, fmt.Errorf("trenitaliascioperi: notice %s has unsupported payload version %d", item.GUID, payload.Version)
+		return noticePayload{}, fmt.Errorf("trenitalia: notice %s has unsupported payload version %d", item.GUID, payload.Version)
 	}
 	return payload, nil
 }
@@ -372,8 +425,11 @@ func changeItem(source rfs.ExtractedItem, title, description string) rfs.Extract
 }
 
 func titlePrefix(payload noticePayload) string {
-	if payload.Status == statusRevoked {
+	switch payload.Status {
+	case statusRevoked:
 		return "Revocato"
+	case statusRestored:
+		return "Ripristinato"
 	}
 	return "Treni"
 }
@@ -388,8 +444,11 @@ func noticeTitle(prefix string, payload noticePayload) string {
 
 func announcementDescription(payload noticePayload) string {
 	var builder strings.Builder
-	if payload.Status == statusRevoked {
+	switch payload.Status {
+	case statusRevoked:
 		builder.WriteString("Avviso revocato dall'operatore; il testo che segue è l'ultimo pubblicato.\n\n")
+	case statusRestored:
+		builder.WriteString("L'operatore dichiara concluso il disagio; il testo che segue è l'ultimo pubblicato.\n\n")
 	}
 	writeField(&builder, "Stato", payload.Status)
 	writeField(&builder, "Ambito", payload.Scope)

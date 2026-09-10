@@ -1,4 +1,4 @@
-package trenitaliascioperi
+package trenitalia
 
 import (
 	"encoding/json"
@@ -40,6 +40,17 @@ func payloadOf(t *testing.T, item rfs.ExtractedItem) noticePayload {
 	return payload
 }
 
+func itemByGUID(t *testing.T, items []rfs.ExtractedItem, guid string) rfs.ExtractedItem {
+	t.Helper()
+	for _, item := range items {
+		if item.GUID == guid {
+			return item
+		}
+	}
+	t.Fatalf("no item with GUID %s in %#v", guid, items)
+	return rfs.ExtractedItem{}
+}
+
 func TestChangesKeepsUnrevokedNoticesActive(t *testing.T) {
 	for _, statement := range []string{
 		"Lo sciopero non è stato revocato",
@@ -75,12 +86,12 @@ func TestChangesKeepsUnrevokedNoticesActive(t *testing.T) {
 	}
 }
 
-func TestExtractPublishesOnlyApplicableStrikeNotices(t *testing.T) {
+func TestExtractPublishesApplicableStrikesAndDisruptions(t *testing.T) {
 	items := extract(t, "notizie_20260905.html")
-	if len(items) != 1 {
-		t.Fatalf("extracted %d notices, want only the national strike: %#v", len(items), items)
+	if len(items) != 2 {
+		t.Fatalf("extracted %d notices, want the national strike and the FVG works page: %#v", len(items), items)
 	}
-	item := items[0]
+	item := itemByGUID(t, items, HumanURL+"#infomobility_summary_548526369")
 	wantGUID := HumanURL + "#infomobility_summary_548526369"
 	if item.GUID != wantGUID || item.Link != wantGUID {
 		t.Fatalf("GUID/Link = %q/%q, want %q", item.GUID, item.Link, wantGUID)
@@ -124,10 +135,34 @@ func TestExtractPublishesOnlyApplicableStrikeNotices(t *testing.T) {
 	}
 }
 
-func TestExtractPublishesNothingWhenNoStrikeIsPublished(t *testing.T) {
+func TestExtractPublishesCoveredDisruptions(t *testing.T) {
 	items := extract(t, "notizie_20260910.html")
-	if len(items) != 0 {
-		t.Fatalf("extracted %#v from a page without strike notices", items)
+	want := map[string]string{
+		HumanURL + "#infomobility_summary_1594016248": "Linea Venezia - Trieste: circolazione rallentata dalle ore 15:30 per condizioni meteo critiche",
+		HumanURL + "#infomobility_summary_1720830883": "INFOLAVORI FRIULI VENEZIA GIULIA",
+	}
+	if len(items) != len(want) {
+		t.Fatalf("extracted %d notices, want %d: %#v", len(items), len(want), items)
+	}
+	for _, item := range items {
+		title, ok := want[item.GUID]
+		if !ok {
+			t.Fatalf("unexpected notice %s: %q", item.GUID, item.Title)
+		}
+		payload := payloadOf(t, item)
+		if payload.Status != statusActive || payload.Scope != scopeFVG {
+			t.Fatalf("%s: status/scope = %q/%q, want %q/%q", item.GUID, payload.Status, payload.Scope, statusActive, scopeFVG)
+		}
+		if payload.Title != title {
+			t.Fatalf("%s: title = %q, want %q", item.GUID, payload.Title, title)
+		}
+		if !strings.HasPrefix(item.Title, "[Treni · FVG] ") {
+			t.Fatalf("title = %q, want an FVG scope label", item.Title)
+		}
+	}
+	payload := payloadOf(t, itemByGUID(t, items, HumanURL+"#infomobility_summary_1594016248"))
+	if !strings.Contains(payload.Body, "La circolazione è rallentata tra Cervignano e Ronchi per condizioni meteo critiche.") {
+		t.Fatalf("body = %q, want the operator's disruption wording", payload.Body)
 	}
 }
 
@@ -198,6 +233,9 @@ func TestClassificationRules(t *testing.T) {
 		{"passenger strike in FVG without the national label", "Sciopero del personale di Trenitalia", "Per i treni regionali in Friuli Venezia Giulia possono verificarsi cancellazioni o variazioni.", []string{"friuli_venezia_giulia"}, scopeFVG},
 		{"covered route tagged with another region", "Sciopero del personale di Trenitalia", "I treni regionali della linea Venezia - Trieste possono subire variazioni.", []string{"veneto"}, scopeFVG},
 		{"proclamato with established applicability", "Sciopero proclamato del personale di Trenitalia", "I treni regionali in Friuli Venezia Giulia possono subire cancellazioni.", []string{"friuli_venezia_giulia"}, scopeFVG},
+		{"standing national page listing every region", "INFORMAZIONI SUL TRASPORTO REGIONALE", "REGIONE FRIULI VENEZIA GIULIA Linea Trieste - Udine: variazioni del servizio per alcuni treni del Regionale.", nil, ""},
+		{"standing works page for another region", "INFOLAVORI VENETO", "Linea Venezia - Trieste via Udine: variazioni del servizio per alcuni treni del Regionale.", nil, ""},
+		{"standing works page for the covered region", "INFOLAVORI FRIULI VENEZIA GIULIA", "Cancellazioni e corse con bus per alcuni treni del Regionale.", nil, scopeFVG},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -273,6 +311,37 @@ func TestChangesEmitsRevocationNotice(t *testing.T) {
 	}
 }
 
+func TestChangesAnnouncesRestorationOfObservedDisruption(t *testing.T) {
+	before := extract(t, "notizie_20260910.html")
+	after := extract(t, "notizie_fvg_restored.html")
+	changes, err := (Flow{}).Changes(before, after)
+	if err != nil {
+		t.Fatalf("Changes: %v", err)
+	}
+	if len(changes) != 1 {
+		t.Fatalf("emitted %#v, want only the restoration of the covered route", changes)
+	}
+	if changes[0].GUID != HumanURL+"#infomobility_summary_1594016248" {
+		t.Fatalf("GUID = %q, want the tracked notice identity", changes[0].GUID)
+	}
+	if !strings.HasPrefix(changes[0].Title, "[Ripristinato · Treni · FVG] ") {
+		t.Fatalf("title = %q, want a restoration label", changes[0].Title)
+	}
+	if !strings.Contains(strings.ToLower(changes[0].Description), "regolare") {
+		t.Fatalf("description = %q, want the operator's restoration wording", changes[0].Description)
+	}
+}
+
+func TestChangesSkipsRestorationsOnFirstObservation(t *testing.T) {
+	changes, err := (Flow{}).Changes(nil, extract(t, "notizie_fvg_restored.html"))
+	if err != nil {
+		t.Fatalf("Changes: %v", err)
+	}
+	if len(changes) != 1 || changes[0].GUID != HumanURL+"#infomobility_summary_1720830883" {
+		t.Fatalf("first observation emitted %#v, want only the standing FVG works page", changes)
+	}
+}
+
 func TestChangesIgnoreFormattingOnlyPoll(t *testing.T) {
 	before := extract(t, "notizie_national_updated.html")
 	separator := ">" + "\n" + "  <"
@@ -300,10 +369,10 @@ func TestExtractDropsUnsafeSupportingLinks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
-	if len(items) != 1 {
-		t.Fatalf("extracted %d notices, want 1", len(items))
+	if len(items) != 2 {
+		t.Fatalf("extracted %d notices, want the strike and the FVG works page", len(items))
 	}
-	payload := payloadOf(t, items[0])
+	payload := payloadOf(t, itemByGUID(t, items, HumanURL+"#infomobility_summary_548526369"))
 	for _, link := range payload.Links {
 		if !strings.HasPrefix(link, "https://") && !strings.HasPrefix(link, "http://") {
 			t.Fatalf("link %q is not a safe HTTP(S) URL", link)
@@ -328,11 +397,22 @@ func TestChangesIgnoresDisappearance(t *testing.T) {
 func TestChangesInitialObservationPublishesActiveNoticesOnly(t *testing.T) {
 	active := extract(t, "notizie_20260905.html")
 	revoked := extract(t, "notizie_national_revoked.html")
-	changes, err := (Flow{}).Changes(nil, append(append([]rfs.ExtractedItem{}, active...), revoked...))
+	restored := itemByGUID(t, extract(t, "notizie_fvg_restored.html"), HumanURL+"#infomobility_summary_1594016248")
+	current := append(append(append([]rfs.ExtractedItem{}, active...), revoked...), restored)
+	changes, err := (Flow{}).Changes(nil, current)
 	if err != nil {
 		t.Fatalf("Changes: %v", err)
 	}
-	if len(changes) != 1 || changes[0].GUID != active[0].GUID {
-		t.Fatalf("initial observation emitted %#v, want only the active notice", changes)
+	want := map[string]bool{}
+	for _, item := range active {
+		want[item.GUID] = true
+	}
+	if len(changes) != len(want) {
+		t.Fatalf("initial observation emitted %#v, want the %d active notices", changes, len(want))
+	}
+	for _, change := range changes {
+		if !want[change.GUID] {
+			t.Fatalf("initial observation announced %q: %s", change.GUID, change.Title)
+		}
 	}
 }
