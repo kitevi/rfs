@@ -7,9 +7,14 @@ import (
 	"github.com/ppowo/rfs/internal/rfs"
 	"github.com/ppowo/rfs/internal/sources"
 	"github.com/ppowo/rfs/internal/sources/film"
+	"github.com/ppowo/rfs/internal/sources/notices"
 	"github.com/ppowo/rfs/internal/sources/ptg"
 	"github.com/ppowo/rfs/internal/sources/trenitalia"
 )
+
+// The bus feeds decide what to announce from the poll instant, so they must
+// satisfy the clock-aware comparison contract the engine dispatches on.
+var _ rfs.ClockedChangeFlow = notices.Flow{}
 
 func TestAllIncludesPTGSource(t *testing.T) {
 	var found bool

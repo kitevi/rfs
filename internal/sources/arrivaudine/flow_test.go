@@ -3,6 +3,7 @@ package arrivaudine
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ppowo/rfs/internal/rfs"
@@ -26,10 +27,12 @@ func TestParseNoticesReadsTheNoticeFeed(t *testing.T) {
 		t.Fatalf("parsed %d notices, want the 10 notices the feed window carries: %#v", len(list), list)
 	}
 	want := []struct {
-		id, title, date string
+		id, title, published, validity string
 	}{
-		{"https://www.arrivaudine.it/notice/avviso-di-sciopero-di-4-ore-per-il-giorno-10-settembre-2026/", "Avviso di sciopero di 4 ore per il giorno 10 settembre 2026", "04/09/2026"},
-		{"https://www.arrivaudine.it/notice/area-udinese-variazioni-sui-servizi-dal-6-luglio/", "Novità dal 6 luglio sui servizi extraurbani", "03/07/2026"},
+		{"https://www.arrivaudine.it/notice/avviso-di-sciopero-di-4-ore-per-il-giorno-10-settembre-2026/", "Avviso di sciopero di 4 ore per il giorno 10 settembre 2026", "04/09/2026 10:06", "il 10/09/2026"},
+		{"https://www.arrivaudine.it/notice/area-udinese-variazioni-sui-servizi-dal-6-luglio/", "Novità dal 6 luglio sui servizi extraurbani", "03/07/2026 12:48", "dal 6 luglio"},
+		{"https://www.arrivaudine.it/notice/carnia-variazioni-sui-servizi-dal-13-aprile-2026/", "Zona Carnia, variazioni sui servizi dal 13 aprile 2026", "09/04/2026 08:49", "dal 13/04/2026"},
+		{"https://www.arrivaudine.it/notice/orari-dei-servizi-nel-periodo-pasquale-3/", "Orari dei servizi nel periodo pasquale", "30/03/2026 13:08", ""},
 	}
 	byID := make(map[string]int, len(list))
 	for i, notice := range list {
@@ -44,11 +47,26 @@ func TestParseNoticesReadsTheNoticeFeed(t *testing.T) {
 		if notice.Title != expected.title {
 			t.Fatalf("title = %q, want %q", notice.Title, expected.title)
 		}
-		if notice.Date != expected.date {
-			t.Fatalf("date = %q, want %q", notice.Date, expected.date)
+		if got := notice.Published.Display(); got != expected.published {
+			t.Fatalf("%s published = %q, want %q", expected.id, got, expected.published)
+		}
+		if got := notice.Validity.Display(); got != expected.validity {
+			t.Fatalf("%s validity = %q, want %q", expected.id, got, expected.validity)
 		}
 		if notice.Link != expected.id {
 			t.Fatalf("link = %q, want the notice permalink %q", notice.Link, expected.id)
+		}
+	}
+}
+
+func TestParseNoticesKeepsTheWindowItCouldNotRead(t *testing.T) {
+	list, err := ParseNotices(fixture(t, "notices_20260910.json"))
+	if err != nil {
+		t.Fatalf("ParseNotices: %v", err)
+	}
+	for _, notice := range list {
+		if strings.Contains(notice.Title, "nuovi orari") && notice.Validity.Start.Known() {
+			t.Fatalf("%q invented a start from a headline that states none: %#v", notice.Title, notice.Validity)
 		}
 	}
 }

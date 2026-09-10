@@ -50,6 +50,22 @@ func TestParseNoticesKeepsTheActiveNotices(t *testing.T) {
 			t.Fatalf("link = %q, want the notice permalink %q", notice.Link, expected.id)
 		}
 	}
+
+	// The summary page states no publication date at all, so nothing may be
+	// turned into an age that could suppress a notice.
+	for _, notice := range list {
+		if notice.Published.Known() {
+			t.Fatalf("%s invented a publication date %v", notice.ID, notice.Published.Time)
+		}
+	}
+	// A start the notice states is a start, not a publication date.
+	if got := byID["https://www.aptgorizia.it/deviazioni-di-percorso/ronchi-dei-legionari-via-del-capitello-2-fermata-sospesa/"].Validity.Display(); got != "dal 29/06/2026" {
+		t.Fatalf("validity = %q, want the stated start", got)
+	}
+	// A bare date in a headline states no window, so it must stay unread.
+	if got := byID["https://www.aptgorizia.it/avvisi-home/moraro-fermate-sospese-per-processione-il-08-09-2026/"].Validity.Display(); got != "" {
+		t.Fatalf("validity = %q, want nothing from a bare date", got)
+	}
 }
 
 func TestParseNoticesRejectsAPageWithoutTheCollection(t *testing.T) {

@@ -79,7 +79,10 @@ func anchorNotice(anchor *html.Node, base *url.URL) (notices.Notice, bool) {
 		return notices.Notice{}, false
 	}
 	link := resolved.String()
-	return notices.Notice{ID: link, Title: title, Link: link}, true
+	// The summary page carries no publication date, so none is invented: a
+	// notice leaves the summary when it stops applying, and the age cutoff
+	// stays out of it rather than being fed a start date as a proxy.
+	return notices.Notice{ID: link, Title: title, Link: link, Validity: notices.ValidityFromText(title)}, true
 }
 
 func inNoticeCategory(path string) bool {

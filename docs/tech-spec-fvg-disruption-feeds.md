@@ -96,7 +96,7 @@ Use source-faithful Italian descriptions and titles such as:
 
 An update includes current operator text and a focused change summary/diff. A partial restoration remains active and is an update, not a full restoration. “Circolazione regolare” inside an old embedded bulletin must not override a newer active update. Use the latest authoritative status only; ambiguous status remains unknown rather than resolved.
 
-RSS dates remain observation times; upstream times and validity windows belong in descriptions. Retain revision-qualified GUIDs, including A → B → A transitions. Escape operator text in RSS/HTML and reject unsafe supporting-link schemes.
+RSS dates remain observation times; upstream times and validity windows belong in descriptions. The bus feeds narrow this to new items whose page states a reliable publication time — see `docs/adr/0011-bus-notice-dates-and-expiry.md`. Retain revision-qualified GUIDs, including A → B → A transitions. Escape operator text in RSS/HTML and reject unsafe supporting-link schemes.
 
 ## Lifecycle
 
@@ -114,7 +114,7 @@ RSS dates remain observation times; upstream times and validity windows belong i
 
 Keep terminal notices in comparison state while upstream exposes them so repeated terminal polls do not duplicate notifications. This proposal does not add indefinite tombstones: after a notice disappears from the stored observation, a later active reappearance is a new observation. Document that limitation.
 
-Do not use the notice publication date as an expiry date. For explicit validity windows, use Europe/Rome and test daylight-saving boundaries. Ambiguous validity is not grounds for suppressing a currently listed disruption. Past revisions remain in feed history; this is not a live departure board.
+Do not use the notice publication date as an expiry date. For explicit validity windows, use Europe/Rome and test daylight-saving boundaries. Ambiguous validity is not grounds for suppressing a currently listed disruption. The bus feeds add a separate two-calendar-month freshness rule on the publication date, which suppresses the announcement without claiming the disruption ended — see `docs/adr/0011-bus-notice-dates-and-expiry.md`. Past revisions remain in feed history; this is not a live departure board.
 
 ## Upgrade behavior
 

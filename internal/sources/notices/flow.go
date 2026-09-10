@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/ppowo/rfs/internal/rfs"
 )
@@ -21,9 +22,9 @@ import (
 const (
 	// ExtractVersion is bumped whenever Extract or Changes output can change for
 	// a fixed page.
-	ExtractVersion = 1
+	ExtractVersion = 2
 
-	payloadVersion = 1
+	payloadVersion = 2
 )
 
 // Notice is one operator notice as published upstream.
@@ -36,8 +37,12 @@ type Notice struct {
 	Summary string
 	// Link is the notice page a reader should open.
 	Link string
-	// Date is the upstream date as published, empty when the collection has none.
-	Date string
+	// Published is the notice's own publication date, zero when the collection
+	// does not state one. It dates the notice, not the disruption.
+	Published Date
+	// Validity is the window the notice says it applies to. An empty Validity
+	// means the page stated none, which is not evidence that it has ended.
+	Validity Validity
 }
 
 // Parser decodes one collection page. It only reads bytes rfs already fetched
@@ -83,9 +88,14 @@ func (f Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 	return items, nil
 }
 
-// Changes emits one item per observed addition or edit. Notices that are
-// unchanged, and notices that are no longer listed, emit nothing.
-func (f Flow) Changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem, error) {
+// ChangesAt emits one item per observed addition or edit, as Changes does.
+//
+// The comparison needs the poll instant: a notice whose stated window has ended,
+// or whose own publication date is older than the freshness window, is compared
+// but not announced. Notices that are unchanged, no longer listed, or currently
+// ineligible emit nothing, and every observed notice — ineligible ones included —
+// still belongs to the baseline so a later change can be told from a first sight.
+func (f Flow) ChangesAt(at time.Time, previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem, error) {
 	stored := make(map[string]rfs.ExtractedItem, len(previous))
 	for _, item := range previous {
 		stored[item.GUID] = item
@@ -98,8 +108,11 @@ func (f Flow) Changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedIte
 		}
 		before, seen := stored[item.GUID]
 		delete(stored, item.GUID)
+		if !Eligible(after.Notice, at) {
+			continue
+		}
 		if !seen {
-			changes = append(changes, changeItem(item, noticeTitle("", f.Operator, after.Notice.Title), announcementDescription(f.Operator, after.Notice)))
+			changes = append(changes, changeItem(item, noticeTitle("", f.Operator, after.Notice.Title), announcementDescription(f.Operator, after.Notice, at), feedTime(after.Notice.Published, at)))
 			continue
 		}
 		beforePayload, beforeErr := decodeNotice(before)
@@ -107,10 +120,25 @@ func (f Flow) Changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedIte
 		if beforeErr == nil && len(fields) == 0 {
 			continue
 		}
-		changes = append(changes, changeItem(item, noticeTitle("Aggiornato", f.Operator, after.Notice.Title), updateDescription(f.Operator, after.Notice, fields)))
+		changes = append(changes, changeItem(item, noticeTitle("Aggiornato", f.Operator, after.Notice.Title), updateDescription(f.Operator, after.Notice, fields, at), nil))
 	}
 	return changes, nil
 }
+
+// feedTime is the timestamp a new feed entry carries: the notice's own
+// publication time when the page stated one, it is precise enough to mean an
+// instant, and it is not in the future. Otherwise nil, so the entry keeps the
+// observation time the engine stamps everything with.
+func feedTime(published Date, at time.Time) *time.Time {
+	if !published.Known() || published.Precision != PrecisionMinute || published.Time.After(at) {
+		return nil
+	}
+	stamp := published.Time
+	return &stamp
+}
+
+// observedAt is the poll instant as readers see it.
+func observedAt(at time.Time) string { return at.In(rome).Format("02/01/2006 15:04") }
 
 type payload struct {
 	Version int    `json:"v"`
@@ -141,8 +169,8 @@ func validate(notice *Notice) error {
 	return nil
 }
 
-func changeItem(source rfs.ExtractedItem, title, description string) rfs.ExtractedItem {
-	return rfs.ExtractedItem{GUID: source.GUID, Link: source.Link, Title: title, Description: description}
+func changeItem(source rfs.ExtractedItem, title, description string, pubDate *time.Time) rfs.ExtractedItem {
+	return rfs.ExtractedItem{GUID: source.GUID, Link: source.Link, Title: title, Description: description, PubDate: pubDate}
 }
 
 func noticeTitle(prefix, operator, title string) string {
@@ -153,10 +181,16 @@ func noticeTitle(prefix, operator, title string) string {
 	return "[" + tag + " · " + operator + "] " + title
 }
 
-func announcementDescription(operator string, notice Notice) string {
+func announcementDescription(operator string, notice Notice, at time.Time) string {
 	var builder strings.Builder
 	writeField(&builder, "Operatore", operator)
-	writeField(&builder, "Data", notice.Date)
+	writeField(&builder, "Pubblicato", notice.Published.Display())
+	writeField(&builder, "Validità", notice.Validity.Display())
+	if feedTime(notice.Published, at) == nil {
+		// The entry cannot carry the notice's own time, so say plainly that the
+		// timestamp readers see is when rfs found it.
+		writeField(&builder, "Rilevato", observedAt(at))
+	}
 	writeField(&builder, "Titolo", notice.Title)
 	writeField(&builder, "Pagina", notice.Link)
 	if notice.Summary != "" {
@@ -178,7 +212,8 @@ func changedFields(before, after Notice) []fieldChange {
 	}{
 		{"Titolo", func(n Notice) string { return n.Title }},
 		{"Riepilogo", func(n Notice) string { return n.Summary }},
-		{"Data", func(n Notice) string { return n.Date }},
+		{"Pubblicato", func(n Notice) string { return n.Published.Display() }},
+		{"Validità", func(n Notice) string { return n.Validity.Display() }},
 		{"Pagina", func(n Notice) string { return n.Link }},
 	}
 	var changes []fieldChange
@@ -192,13 +227,11 @@ func changedFields(before, after Notice) []fieldChange {
 	return changes
 }
 
-func updateDescription(operator string, notice Notice, fields []fieldChange) string {
+func updateDescription(operator string, notice Notice, fields []fieldChange, at time.Time) string {
 	var builder strings.Builder
 	builder.WriteString("Aggiornamento dell'avviso: " + notice.Title)
-	if notice.Date != "" {
-		builder.WriteString(" (" + notice.Date + ")")
-	}
 	builder.WriteString("\n" + operator + "\n")
+	builder.WriteString("\n" + "Aggiornamento rilevato: " + observedAt(at))
 	for _, field := range fields {
 		builder.WriteString("\n" + field.label + ": " + displayValue(field.before) + " → " + displayValue(field.after))
 	}

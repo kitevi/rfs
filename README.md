@@ -103,10 +103,19 @@ Descriptions keep the operator's original Italian wording.
 
 Unlike the SeaDex feed, the first successful poll **publishes** the notices that
 are already in force instead of starting from a silent baseline, so a new
-subscriber is not left with an empty feed.
+subscriber is not left with an empty feed: the notices the operator still lists
+arrive with the operator's own publication date, and a notice whose stated
+window has ended is left out.
 A disruption that is already over when it is first observed is history, so it is
 never announced: only a disruption rfs tracked while it was active can announce
 its own end.
+
+The bus feeds also stop announcing a notice whose own publication date is more
+than two calendar months old, even when it is still in force. That is a
+freshness rule, not a claim that the disruption has ended, and it never retracts
+an entry a reader already has. A page that states no publication date — APT
+Gorizia's summary — is unaffected by it. See
+`docs/adr/0011-bus-notice-dates-and-expiry.md`.
 
 The rail feed widened from strikes to all disruption, which is a new extraction
 version. An extraction-version upgrade normally rebaselines in silence, and the

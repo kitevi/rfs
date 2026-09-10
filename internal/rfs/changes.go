@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // ChangeFlow compares complete observations. Extract returns stable entity GUIDs;
@@ -13,6 +14,17 @@ import (
 type ChangeFlow interface {
 	Flow
 	Changes(previous, current []ExtractedItem) ([]ExtractedItem, error)
+}
+
+// ClockedChangeFlow is a ChangeFlow whose comparison depends on the poll
+// instant. rfs supplies the instant from its own clock, so a Flow never reads
+// the ambient time and the comparison stays testable. It is a separate contract
+// rather than an addition to ChangeFlow: a Flow whose decision needs the instant
+// should not also have to offer a comparison that has none. A ChangeFlow that
+// does not implement this interface keeps comparing without an instant.
+type ClockedChangeFlow interface {
+	Flow
+	ChangesAt(time.Time, []ExtractedItem, []ExtractedItem) ([]ExtractedItem, error)
 }
 
 type ChangeState struct {
@@ -27,7 +39,17 @@ type ChangeStore interface {
 	SaveChanges(context.Context, string, ChangeState, []Item, FetchCache) error
 }
 
-func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow, current []ExtractedItem, cache FetchCache) (PollResult, error) {
+// comparesChanges reports whether a Flow's entries are derived by comparison
+// instead of being projected from the page every poll.
+func comparesChanges(flow Flow) bool {
+	switch flow.(type) {
+	case ChangeFlow, ClockedChangeFlow:
+		return true
+	}
+	return false
+}
+
+func (p Poller) pollChanges(ctx context.Context, source Source, flow Flow, current []ExtractedItem, cache FetchCache) (PollResult, error) {
 	store, ok := p.Store.(ChangeStore)
 	if !ok {
 		return PollResult{}, fmt.Errorf("poll %s: store does not support changes", source.ID)
@@ -42,7 +64,7 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 		// The first complete observation is the feed's starting point. Sources
 		// that opt in publish it; everything else starts from silence.
 		if source.EmitInitial {
-			changes, err = flow.Changes(nil, current)
+			changes, err = changesAt(flow, p.now(), nil, current)
 			if err != nil {
 				return PollResult{}, err
 			}
@@ -54,7 +76,7 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 		// behind a silent rebaseline. The Flow has to treat an older payload as
 		// comparison state; a bump that changes every payload announces the
 		// whole feed again, which is why this stays opt-in.
-		changes, err = flow.Changes(previous.Items, current)
+		changes, err = changesAt(flow, p.now(), previous.Items, current)
 		if err != nil {
 			return PollResult{}, err
 		}
@@ -69,7 +91,7 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 	}
 	items := make([]Item, 0, len(changes))
 	for _, change := range changes {
-		items = append(items, Item{GUID: fmt.Sprintf("%s:%d:%s", source.ID, revision, change.GUID), Title: change.Title, Link: change.Link, Description: change.Description, PubDate: p.now()})
+		items = append(items, Item{GUID: fmt.Sprintf("%s:%d:%s", source.ID, revision, change.GUID), Title: change.Title, Link: change.Link, Description: change.Description, PubDate: changeTime(change, p.now())})
 	}
 	cache.ExtractVersion = flow.Version()
 	err = store.SaveChanges(ctx, source.ID, ChangeState{Items: current, Version: flow.Version(), Revision: revision, Initialized: true}, items, cache)
@@ -77,6 +99,27 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 		return PollResult{}, err
 	}
 	return PollResult{Status: PollUpdated}, nil
+}
+
+// changesAt runs the comparison, handing a clock-aware Flow the poll instant so
+// its decision cannot drift with the wall clock.
+func changesAt(flow Flow, at time.Time, previous, current []ExtractedItem) ([]ExtractedItem, error) {
+	switch typed := flow.(type) {
+	case ClockedChangeFlow:
+		return typed.ChangesAt(at, previous, current)
+	case ChangeFlow:
+		return typed.Changes(previous, current)
+	}
+	return nil, fmt.Errorf("flow does not compare observations")
+}
+
+// changeTime picks the emitted timestamp: the Flow's own publication time when
+// it reported one, otherwise the observation time the poller would use anyway.
+func changeTime(change ExtractedItem, observed time.Time) time.Time {
+	if change.PubDate != nil {
+		return *change.PubDate
+	}
+	return observed
 }
 
 func (s *SQLiteStore) LoadChangeState(ctx context.Context, sourceID string) (ChangeState, error) {

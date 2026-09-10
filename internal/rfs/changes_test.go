@@ -199,3 +199,56 @@ func TestPollerEmitsDistinctRevisionGUIDsForRepeatedTransitions(t *testing.T) {
 		}
 	}
 }
+
+// clockedEmissionFlow is an emissionFlow that also implements
+// ClockedChangeFlow, recording the instant it was asked to compare at and
+// stamping emitted items with a Flow-supplied publication date.
+type clockedEmissionFlow struct {
+	emissionFlow
+	at      time.Time
+	pubDate *time.Time
+}
+
+func (f *clockedEmissionFlow) ChangesAt(at time.Time, previous, current []ExtractedItem) ([]ExtractedItem, error) {
+	f.at = at
+	changes, err := f.emissionFlow.Changes(previous, current)
+	if err != nil || f.pubDate == nil {
+		return changes, err
+	}
+	for i := range changes {
+		changes[i].PubDate = f.pubDate
+	}
+	return changes, nil
+}
+
+func TestPollerComparesAtTheClockInstantAndHonorsExtractedPubDate(t *testing.T) {
+	ctx := context.Background()
+	store := newEmissionStore(t)
+	published := time.Date(2026, 9, 4, 10, 6, 44, 0, time.UTC)
+	flow := &clockedEmissionFlow{pubDate: &published}
+	flow.items = []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}
+	flow.version = 1
+	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow, EmitInitial: true}
+	at := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: at}}
+
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	if !flow.at.Equal(at) {
+		t.Fatalf("comparison ran at %v, want the injected clock instant %v", flow.at, at)
+	}
+	items, err := store.LoadSnapshot(ctx, "notices")
+	if err != nil {
+		t.Fatalf("load snapshot: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("published %#v, want one item", items)
+	}
+	if !items[0].PubDate.Equal(published) {
+		t.Fatalf("pubDate = %v, want the notice's own publication time %v", items[0].PubDate, published)
+	}
+	if items[0].GUID != "notices:1:a" {
+		t.Fatalf("GUID = %q, want the revision GUID", items[0].GUID)
+	}
+}

@@ -17,7 +17,7 @@ type JSONFetcher interface {
 	FetchJSON(context.Context, string, []byte) (FetchResult, error)
 }
 
-func (p Poller) enrichChanges(ctx context.Context, flow ChangeFlow, changes []ExtractedItem) ([]ExtractedItem, error) {
+func (p Poller) enrichChanges(ctx context.Context, flow Flow, changes []ExtractedItem) ([]ExtractedItem, error) {
 	enriched, ok := flow.(EnrichedChangeFlow)
 	if !ok {
 		return changes, nil

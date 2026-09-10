@@ -58,12 +58,14 @@ func ParseNotices(page rfs.Page) ([]notices.Notice, error) {
 		if link == "" || title == "" {
 			return nil, errors.New("arrivaudine: notice without a permalink or a title")
 		}
+		summary := noticeBody(entry.Content.Rendered)
 		list = append(list, notices.Notice{
-			ID:      link,
-			Title:   title,
-			Summary: noticeBody(entry.Content.Rendered),
-			Link:    link,
-			Date:    noticeDate(entry.Date),
+			ID:        link,
+			Title:     title,
+			Summary:   summary,
+			Link:      link,
+			Published: noticeDate(entry.Date),
+			Validity:  notices.ValidityFromText(title + " " + summary),
 		})
 	}
 	return list, nil
@@ -82,10 +84,13 @@ func noticeBody(rendered string) string {
 	return notices.TextOf(doc)
 }
 
-func noticeDate(stamp string) string {
-	parsed, err := time.Parse("2006-01-02T15:04:05", strings.TrimSpace(stamp))
+// noticeDate reads the endpoint's publication timestamp. WordPress renders it
+// as a wall-clock reading in the site's own timezone.
+func noticeDate(stamp string) notices.Date {
+	trimmed := strings.TrimSpace(stamp)
+	parsed, err := time.ParseInLocation("2006-01-02T15:04:05", trimmed, notices.Local())
 	if err != nil {
-		return ""
+		return notices.Date{Text: trimmed}
 	}
-	return parsed.Format("02/01/2006")
+	return notices.MinuteDate(parsed)
 }

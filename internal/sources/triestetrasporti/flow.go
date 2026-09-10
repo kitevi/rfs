@@ -86,12 +86,14 @@ func cardNotice(card *html.Node, base *url.URL) (notices.Notice, bool) {
 	if href == "" || title == "" {
 		return notices.Notice{}, false
 	}
+	summary := notices.TextOf(notices.FindByClass(card, "div", "description"))
 	return notices.Notice{
-		ID:      href,
-		Title:   title,
-		Summary: notices.TextOf(notices.FindByClass(card, "div", "description")),
-		Link:    href,
-		Date:    cardDate(card),
+		ID:        href,
+		Title:     title,
+		Summary:   summary,
+		Link:      href,
+		Published: cardDate(card),
+		Validity:  notices.ValidityFromText(title + " " + summary),
 	}, true
 }
 
@@ -110,15 +112,17 @@ func anchors(root *html.Node) []*html.Node {
 	return found
 }
 
-// cardDate renders the upstream timestamp as the feed's date format.
-func cardDate(card *html.Node) string {
+// cardDate reads the date the card shows for its notice. The theme writes it as
+// a wall-clock reading with a Z suffix, so the calendar day is taken as written
+// instead of being shifted into the zone the suffix claims.
+func cardDate(card *html.Node) notices.Date {
 	stamp := notices.Attr(notices.FindFirst(card, "time"), "datetime")
 	if stamp == "" {
-		return ""
+		return notices.Date{}
 	}
 	parsed, err := time.Parse(time.RFC3339, stamp)
 	if err != nil {
-		return ""
+		return notices.Date{Text: stamp}
 	}
-	return parsed.Format("02/01/2006")
+	return notices.DayDate(time.Date(parsed.Year(), parsed.Month(), parsed.Day(), 0, 0, 0, 0, notices.Local()))
 }

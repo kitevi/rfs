@@ -43,14 +43,15 @@ func TestParseNoticesKeepsTheInForceListOnly(t *testing.T) {
 	}
 	byID := index(list)
 	want := []struct {
-		id    string
-		title string
-		date  string
+		id, title, published, validity string
 	}{
-		{"https://www.triestetrasporti.it/it/orario-invernale-14settembre2026", "Dal 14 settembre in vigore l'orario invernale degli autobus", "10/09/2026"},
-		{"https://www.triestetrasporti.it/it/maltempo-10settembre-deviazioni", "Maltempo, tutte le deviazioni in vigore", "10/09/2026"},
-		{"https://www.triestetrasporti.it/it/linea33/-servizio-spola", "Linea 33/, sospeso il servizio minibus e riattivata la spola via della Bastia-Campanelle", "09/09/2026"},
-		{"https://www.triestetrasporti.it/it/modifiche-servizio-chiusura-santanastasio", "Chiusura di via Sant'Anastasio causa lavori: deviazione per le linee 28, 64 e 30", "20/08/2026"},
+		// The headline states a start without a year. The phrase is shown as
+		// published; no year is invented for it.
+		{"https://www.triestetrasporti.it/it/orario-invernale-14settembre2026", "Dal 14 settembre in vigore l'orario invernale degli autobus", "10/09/2026", "Dal 14 settembre"},
+		{"https://www.triestetrasporti.it/it/maltempo-10settembre-deviazioni", "Maltempo, tutte le deviazioni in vigore", "10/09/2026", ""},
+		{"https://www.triestetrasporti.it/it/linea33/-servizio-spola", "Linea 33/, sospeso il servizio minibus e riattivata la spola via della Bastia-Campanelle", "09/09/2026", ""},
+		{"https://www.triestetrasporti.it/it/modifiche-servizio-chiusura-santanastasio", "Chiusura di via Sant'Anastasio causa lavori: deviazione per le linee 28, 64 e 30", "20/08/2026", "dal 24/08/2026"},
+		{"https://www.triestetrasporti.it/it/abbonamenti-scolastici-agevolati-acquisto-24-agosto-2026", "Abbonamenti scolastici agevolati, acquisto possibile da lunedì 24 agosto", "21/08/2026", "fino al 31/10/2026"},
 	}
 	for _, expected := range want {
 		notice, ok := byID[expected.id]
@@ -60,8 +61,11 @@ func TestParseNoticesKeepsTheInForceListOnly(t *testing.T) {
 		if notice.Title != expected.title {
 			t.Fatalf("title = %q, want %q", notice.Title, expected.title)
 		}
-		if notice.Date != expected.date {
-			t.Fatalf("%s date = %q, want %q", expected.id, notice.Date, expected.date)
+		if got := notice.Published.Display(); got != expected.published {
+			t.Fatalf("%s published = %q, want %q", expected.id, got, expected.published)
+		}
+		if got := notice.Validity.Display(); got != expected.validity {
+			t.Fatalf("%s validity = %q, want %q", expected.id, got, expected.validity)
 		}
 		if notice.Link != expected.id {
 			t.Fatalf("link = %q, want the notice permalink %q", notice.Link, expected.id)

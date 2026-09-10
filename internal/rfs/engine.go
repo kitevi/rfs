@@ -109,8 +109,8 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		return pollFailure(err)
 	}
 
-	if flow, ok := source.Flow.(ChangeFlow); ok {
-		return p.pollChanges(ctx, source, flow, extracted, savedCache)
+	if comparesChanges(source.Flow) {
+		return p.pollChanges(ctx, source, source.Flow, extracted, savedCache)
 	}
 
 	items := make([]Item, 0, len(extracted))
