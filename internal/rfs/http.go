@@ -64,6 +64,7 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	at := h.now()
 	var items []Item
 	var err error
 	if source.History != nil {
@@ -83,7 +84,12 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "load feed snapshot", http.StatusInternalServerError)
 		return
 	}
-	items = liveItems(source, items, h.now())
+	items = liveItems(source, items, at)
+	if presenter, ok := source.Flow.(ItemPresenter); ok {
+		for i := range items {
+			items[i] = presenter.PresentItem(items[i])
+		}
+	}
 
 	switch format {
 	case "xml":

@@ -1,61 +1,94 @@
-# Broadened operator scope with an observable extraction-version upgrade
+# Operator-confirmed transport disruption feeds
 
-Amends ADR 0003 for the extraction version transition. Every other Source keeps
-its current behavior.
+This is the current decision record for all four transport feeds. Source IDs,
+feed URLs and announcement-history semantics remain stable.
 
-The FVG transport feeds started strike-only. Weather and technical incidents,
-suspensions, delays, diversions, stop closures and planned works make a journey
-unusable just as a strike does, so the scope widens to operator-confirmed
-disruption. Widening a Flow changes what `Extract` returns for a fixed page, so
-ADR 0003's rule — a version mismatch rebaselines silently — would drop the newly
-covered notices for every subscriber that already had a baseline.
+## Sources and applicability
 
-## Decision
+Each Source has its own poll and failure boundary:
 
-- **Eligibility.** A notice qualifies when an official operator statement
-  establishes both covered-service applicability and an operational impact,
-  whether actual, anticipated or conditional. Strikes, weather and technical
-  incidents, suspensions, cancellations, delays, route limitations, diversions,
-  replacement buses, stop closures and planned works qualify. Generic news,
-  other regions, ATAP-only notices, freight-only incidents and standing pages
-  without an impact do not.
-- **Applicability over vocabulary.** Examine the
-  service applicability of a notice, never a keyword blacklist. A title that
-  names no operational change is a standing page rather than a disruption, and
-  a standing page lists sections for several places, so only its own title can
-  establish coverage. That keeps the national high-speed delay list and the
-  regional information index out of an FVG feed even though their bodies
-  mention FVG lines.
-- **Terminal states.** A title stating that the disruption is over is stored as
-  `Ripristinato`, distinct from an explicit withdrawal (`Revocato`). A
-  disruption that is already over when it is first observed is history: it is
-  never announced. Only a disruption tracked while it was active can announce
-  its own end, and that announcement keeps the entity's GUID.
-- **Opt-in version transition.** `Source.EmitVersionChanges` makes a version
-  mismatch compare the stored baseline with the re-derived observation instead
-  of rebaselining in silence. The rail feed opts in, so subscribers of the
-  strike-only feed receive the disruptions the widened scope now covers while
-  unchanged strikes stay silent. The stored payload schema did not change, so
-  an older payload is comparison state rather than a difference.
+| Source | Collection | Coverage |
+| --- | --- | --- |
+| `arriva-udine` | WordPress notice endpoint, newest window | Arriva Udine services |
+| `trieste-trasporti` | Active notice cards, before the archive marker | Trieste Trasporti services |
+| `apt-gorizia` | Linked active notices and diversions | Gorizia and Monfalcone services |
+| `trenitalia-disruptions` | Infomobilità collection | Trenitalia passenger services affecting FVG |
 
-## Consequences
+An official operator statement must establish both applicability and operational
+impact. Strikes, weather and technical incidents, suspensions, cancellations,
+delays, diversions, replacement buses, timetable changes, stop closures and
+planned works qualify. ATAP-only notices, unrelated regions and freight-only
+incidents do not. Genuine strike terminology in upstream URLs and classifiers is
+part of the current domain, not obsolete naming.
 
-- The opt-in is per Source and deliberately not global: a bump that changes
-  every payload would announce a whole feed again, so only a Flow that compares
-  an older payload as state may opt in. SeaDex and every projection feed keep
-  ADR 0008's silent rebaseline.
-- A stable identity plus a stable schema is what makes the upgrade observable.
-  A future change to the payload schema has to keep the previous version
-  decodable, or the same bump announces every notice as an update.
-- The terminal-state rule removes the previous special case that only skipped a
-  revoked notice on a first observation.
+Rail applicability includes the FVG region tag, routes serving Udine, Trieste,
+Gorizia or Monfalcone, and applicable national operator notices. Standing pages
+must establish coverage in their own title; a passing body reference is not
+enough. Explicit terminal titles are not announced. Disappearance emits nothing;
+only an explicit operator revocation establishes revocation.
 
-## Bus coverage
+## Shared bus flow
 
-Discovery on the deployment host found that TPL FVG's own alert hub
-(`/it/infomobilita/avvisi-sul-servizio/`) is prose plus links, not a notice
-collection: the notices live on the three operators' own sites —
-`triestetrasporti.it/it/avvisi-infomobilita`, `arrivaudine.it/avvisi/` and APT
-Gorizia's "Modifiche al servizio" page. Each is a different origin from the
-consortium collection, so the buses became one feed per operator (ADR 0010)
-instead of one feed over several origins.
+Operator parsers return `notices.Notice` values. The shared Flow validates stable
+permalink identities, compares observations, and emits additions or edits.
+Every observed notice stays in the comparison baseline, including ineligible
+ones. Disappearance does not imply that the service resumed.
+
+Dates retain original wording, decoded Europe/Rome time, and day or minute
+precision. Arriva supplies minute-precision WordPress wall-clock timestamps.
+Trieste supplies calendar days, taken as written despite the theme's Z suffix.
+APT's collection supplies no publication date; validity is not a substitute.
+Validity parsing uses only explicit wording in the fetched collection, not
+holiday calculations or extra detail-page requests.
+
+A stated end excludes a notice after that instant, or after the entire stated
+calendar day for day precision. Publication older than two calendar months also
+excludes it, with month-end clamping. That freshness cutoff is not evidence that
+the disruption has ended. Unknown dates do not establish either expiry or age.
+The same predicate applies during emission and at request time for HTML and RSS.
+
+## Storage and presentation
+
+Extraction JSON belongs to the comparison baseline. Published descriptions are
+human-readable text. Published bus items carry separate versioned metadata with
+the notice's publication, validity, identity and observation timestamp. Metadata
+passes through announcement creation, the poller and SQLite; descriptions are
+never parsed to recover machine state.
+
+HTML uses an explicit publication label, including only the precision known.
+Unrecoverable publication is labelled unavailable. New RSS announcements use a
+non-future minute-precision publication timestamp when known; otherwise they use
+observation time. Edit announcements retain observation timestamps. Dates and
+validity remain explicit in descriptions. The renderer does not fabricate a
+midnight instant for a calendar day.
+
+Missing or unsupported metadata establishes neither a publication date nor
+expiry. There is no legacy description decoder, enrichment fetch, repair table,
+or write-on-read path. A database containing pre-metadata bus items requires a
+separate operator-managed repair or bus-only reset before deployment; back up
+first. Clearing validators alone cannot rewrite existing announcements.
+
+## History and versions
+
+First observations publish eligible notices. Additions and edits retain
+revision-qualified RSS GUIDs, including A → B → A changes. Bus request-time
+filtering does not delete stored history or retract a reader's cached items.
+Rail does not implement bus liveness filtering and retains its served history.
+
+Extraction versions invalidate cached validators when code changes derivation.
+Bus feeds silently rebaseline on version mismatch. Rail opts into
+`EmitVersionChanges` to compare a changed derivation against its baseline.
+These generic engine contracts remain; no operator-specific upgrade shim is
+needed. Other sources retain their existing policies.
+
+## Verification
+
+Fixtures cover each operator's parsing and scope. Integration tests exercise real
+Extract → ChangesAt → poller → SQLite → HTTP announcements, database reopen,
+metadata round trips, date labels, unchanged GUIDs and clock-only age-out.
+Unknown, malformed, day-only and future publication values have focused tests.
+Rail classification, terminal states and change-history tests remain in place.
+
+Run `go test ./...` and `go vet ./...`. Production deployment and any one-time
+state maintenance are separate operations; verify the deployed build and both
+feed formats after release.

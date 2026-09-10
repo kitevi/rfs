@@ -3,8 +3,8 @@
 //
 // The page is a standing summary that links each active notice on the
 // operator's own site, grouped by service area, so the notice permalink is the
-// identity the feed compares and a notice that leaves the summary is treated as
-// expired rather than cancelled.
+// identity the feed compares. A notice leaving the summary emits nothing;
+// disappearance alone does not establish expiry or cancellation.
 package aptgorizia
 
 import (

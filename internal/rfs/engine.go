@@ -138,6 +138,7 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 			Title:       item.Title,
 			Link:        item.Link,
 			Description: item.Description,
+			Metadata:    item.Metadata,
 			PubDate:     pubDate,
 			Replies:     item.Replies,
 		})

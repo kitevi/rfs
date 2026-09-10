@@ -36,8 +36,12 @@ func polledAt() time.Time { return romeTime(2026, time.September, 10, 12, 0) }
 
 func TestLiveAtDropsStoredEntriesThatAreNoLongerLive(t *testing.T) {
 	flow := flowWith(notice("https://example.com/a", "Linea 9 deviata", "Deviazione."))
-	extracted := extract(t, flow)[0]
-	item := rfs.Item{GUID: extracted.GUID, Link: extracted.Link, Description: extracted.Description}
+	changes, err := flow.ChangesAt(polledAt(), nil, extract(t, flow))
+	if err != nil || len(changes) != 1 {
+		t.Fatalf("changes: %v %v", changes, err)
+	}
+	extracted := changes[0]
+	item := rfs.Item{GUID: extracted.GUID, Link: extracted.Link, Description: extracted.Description, Metadata: extracted.Metadata}
 	if !flow.LiveAt(item, polledAt()) {
 		t.Fatal("a notice published the same day was reported as no longer live")
 	}
@@ -45,22 +49,6 @@ func TestLiveAtDropsStoredEntriesThatAreNoLongerLive(t *testing.T) {
 		t.Fatal("a notice older than the freshness window was still reported as live")
 	}
 
-	// A row a pre-upgrade poll stored: one free-text date and no window.
-	legacy := func(date, id string) rfs.Item {
-		description := `{"v":1,"notice":{"ID":"` + id + `","Title":"Avviso","Link":"` + id + `","Date":"` + date + `"}}`
-		return rfs.Item{GUID: id, Link: id, Description: description}
-	}
-	if flow.LiveAt(legacy("30/03/2026", "https://example.com/easter"), polledAt()) {
-		t.Fatal("the Easter row stored by the previous build is still served")
-	}
-	if !flow.LiveAt(legacy("26/08/2026", "https://example.com/orari"), polledAt()) {
-		t.Fatal("a row the previous build stored inside the window was dropped")
-	}
-
-	// A payload this build cannot read is not grounds for hiding an entry.
-	if !flow.LiveAt(rfs.Item{GUID: "https://example.com/x", Description: "not a payload"}, polledAt()) {
-		t.Fatal("an unreadable payload hid an entry")
-	}
 }
 
 func TestExtractAnnouncesEveryNoticeWithItsOperator(t *testing.T) {

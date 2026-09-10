@@ -91,7 +91,7 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow Flow, curre
 	}
 	items := make([]Item, 0, len(changes))
 	for _, change := range changes {
-		items = append(items, Item{GUID: fmt.Sprintf("%s:%d:%s", source.ID, revision, change.GUID), Title: change.Title, Link: change.Link, Description: change.Description, PubDate: changeTime(change, p.now())})
+		items = append(items, Item{GUID: fmt.Sprintf("%s:%d:%s", source.ID, revision, change.GUID), Title: change.Title, Link: change.Link, Description: change.Description, Metadata: change.Metadata, PubDate: changeTime(change, p.now())})
 	}
 	cache.ExtractVersion = flow.Version()
 	err = store.SaveChanges(ctx, source.ID, ChangeState{Items: current, Version: flow.Version(), Revision: revision, Initialized: true}, items, cache)
@@ -152,7 +152,7 @@ func (s *SQLiteStore) SaveChanges(ctx context.Context, sourceID string, state Ch
 	}
 	defer rollbackUnlessCommitted(tx)
 	for _, item := range items {
-		_, err = tx.ExecContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date) VALUES (?, ?, ?, ?, ?, ?)`, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate))
+		_, err = tx.ExecContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Metadata)
 		if err != nil {
 			return err
 		}

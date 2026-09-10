@@ -85,6 +85,9 @@ func (s *SQLiteStore) init(ctx context.Context) error {
 // migrate adds columns introduced after the initial schema to databases
 // created by older rfs builds. Each step is idempotent.
 func (s *SQLiteStore) migrate(ctx context.Context) error {
+	if err := s.addColumnIfMissing(ctx, "snapshots", "metadata", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
 	if err := s.addColumnIfMissing(ctx, "fetch_cache", "extract_version", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
@@ -145,14 +148,14 @@ func (s *SQLiteStore) SaveSnapshot(ctx context.Context, sourceID string, items [
 	if _, err := tx.ExecContext(ctx, `DELETE FROM snapshots WHERE source_id = ?`, sourceID); err != nil {
 		return err
 	}
-	stmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, replies) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+	stmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, replies, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer stmt.Close()
 
 	for _, item := range items {
-		if _, err := stmt.ExecContext(ctx, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Replies); err != nil {
+		if _, err := stmt.ExecContext(ctx, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Replies, item.Metadata); err != nil {
 			return err
 		}
 	}
@@ -161,7 +164,7 @@ func (s *SQLiteStore) SaveSnapshot(ctx context.Context, sourceID string, items [
 }
 
 func (s *SQLiteStore) LoadSnapshot(ctx context.Context, sourceID string) ([]Item, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT guid, title, link, description, pub_date, replies FROM snapshots WHERE source_id = ? ORDER BY pub_date DESC, guid ASC`, sourceID)
+	rows, err := s.db.QueryContext(ctx, `SELECT guid, title, link, description, pub_date, replies, metadata FROM snapshots WHERE source_id = ? ORDER BY pub_date DESC, guid ASC`, sourceID)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +174,7 @@ func (s *SQLiteStore) LoadSnapshot(ctx context.Context, sourceID string) ([]Item
 	for rows.Next() {
 		var item Item
 		var pubDate string
-		if err := rows.Scan(&item.GUID, &item.Title, &item.Link, &item.Description, &pubDate, &item.Replies); err != nil {
+		if err := rows.Scan(&item.GUID, &item.Title, &item.Link, &item.Description, &pubDate, &item.Replies, &item.Metadata); err != nil {
 			return nil, err
 		}
 		parsed, err := parseStoreTime(pubDate)

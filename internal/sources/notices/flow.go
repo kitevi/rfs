@@ -88,7 +88,7 @@ func (f Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 	return items, nil
 }
 
-// ChangesAt emits one item per observed addition or edit, as Changes does.
+// ChangesAt emits one item per observed addition or edit.
 //
 // The comparison needs the poll instant: a notice whose stated window has ended,
 // or whose own publication date is older than the freshness window, is compared
@@ -107,12 +107,11 @@ func (f Flow) ChangesAt(at time.Time, previous, current []rfs.ExtractedItem) ([]
 			return nil, err
 		}
 		before, seen := stored[item.GUID]
-		delete(stored, item.GUID)
 		if !Eligible(after.Notice, at) {
 			continue
 		}
 		if !seen {
-			changes = append(changes, changeItem(item, noticeTitle("", f.Operator, after.Notice.Title), announcementDescription(f.Operator, after.Notice, at), feedTime(after.Notice.Published, at)))
+			changes = append(changes, changeItem(after.Notice, noticeTitle("", f.Operator, after.Notice.Title), announcementDescription(f.Operator, after.Notice, at), feedTime(after.Notice.Published, at), at))
 			continue
 		}
 		beforePayload, beforeErr := decodeNotice(before)
@@ -120,72 +119,9 @@ func (f Flow) ChangesAt(at time.Time, previous, current []rfs.ExtractedItem) ([]
 		if beforeErr == nil && len(fields) == 0 {
 			continue
 		}
-		changes = append(changes, changeItem(item, noticeTitle("Aggiornato", f.Operator, after.Notice.Title), updateDescription(f.Operator, after.Notice, fields, at), nil))
+		changes = append(changes, changeItem(after.Notice, noticeTitle("Aggiornato", f.Operator, after.Notice.Title), updateDescription(f.Operator, after.Notice, fields, at), nil, at))
 	}
 	return changes, nil
-}
-
-// LiveAt reports whether a stored feed entry still describes a notice a
-// subscriber should see. rfs asks this while rendering the feed, so an entry
-// leaves the feed when its window ends instead of waiting for the next poll to
-// notice.
-func (f Flow) LiveAt(item rfs.Item, at time.Time) bool {
-	notice, err := storedNotice(item.Description)
-	if err != nil {
-		// A payload this build cannot read is not grounds for hiding an entry.
-		return true
-	}
-	return Eligible(notice, at)
-}
-
-// storedNotice reads the notice out of a stored description. Entries an older
-// poll stored are still served, so the shape from before the payload version
-// bump — a single free-text date and no window — is read too.
-func storedNotice(description string) (Notice, error) {
-	var decoded struct {
-		Version int `json:"v"`
-		Notice  struct {
-			ID        string
-			Title     string
-			Summary   string
-			Link      string
-			Published Date
-			Validity  Validity
-			Date      string
-		} `json:"notice"`
-	}
-	if err := json.Unmarshal([]byte(description), &decoded); err != nil {
-		return Notice{}, fmt.Errorf("notices: decode stored entry: %w", err)
-	}
-	notice := Notice{
-		ID:        decoded.Notice.ID,
-		Title:     decoded.Notice.Title,
-		Summary:   decoded.Notice.Summary,
-		Link:      decoded.Notice.Link,
-		Published: decoded.Notice.Published,
-		Validity:  decoded.Notice.Validity,
-	}
-	if decoded.Version < payloadVersion {
-		notice.Published = legacyDate(decoded.Notice.Date)
-		notice.Validity = Validity{}
-	}
-	return notice, nil
-}
-
-// legacyDate reads the date older payloads carried: dd/mm/yyyy, with a clock
-// time appended by the builds that decoded one. Both are day precision, because
-// the date older payloads stored was a day.
-func legacyDate(text string) Date {
-	trimmed := strings.TrimSpace(text)
-	if trimmed == "" {
-		return Date{}
-	}
-	for _, layout := range []string{"02/01/2006", "02/01/2006 15:04"} {
-		if parsed, err := time.ParseInLocation(layout, trimmed, rome); err == nil {
-			return DayDate(parsed)
-		}
-	}
-	return Date{Text: trimmed}
 }
 
 // feedTime is the timestamp a new feed entry carries: the notice's own
@@ -232,8 +168,9 @@ func validate(notice *Notice) error {
 	return nil
 }
 
-func changeItem(source rfs.ExtractedItem, title, description string, pubDate *time.Time) rfs.ExtractedItem {
-	return rfs.ExtractedItem{GUID: source.GUID, Link: source.Link, Title: title, Description: description, PubDate: pubDate}
+func changeItem(notice Notice, title, description string, pubDate *time.Time, at time.Time) rfs.ExtractedItem {
+	data, _ := json.Marshal(announcementMetadata{Version: 1, Notice: notice, Observed: at})
+	return rfs.ExtractedItem{GUID: notice.ID, Link: notice.Link, Title: title, Description: description, Metadata: string(data), PubDate: pubDate}
 }
 
 func noticeTitle(prefix, operator, title string) string {

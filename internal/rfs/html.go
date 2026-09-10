@@ -110,11 +110,15 @@ func RenderHTMLFeed(sourceID string, meta SourceMeta, items []Item, build BuildI
 		if meta.ItemDescriptionsHTML {
 			description = template.HTML(item.Description)
 		}
+		dateLabel := item.DateLabel
+		if dateLabel == "" {
+			dateLabel = formatHTMLDate(item.PubDate)
+		}
 		view.Items = append(view.Items, feedItemView{
 			Title:       item.Title,
 			Link:        item.Link,
 			Description: description,
-			PubDate:     formatHTMLDate(item.PubDate),
+			PubDate:     dateLabel,
 		})
 	}
 	return renderTemplate("feed", feedTemplate, view)
