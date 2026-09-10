@@ -92,8 +92,12 @@ an edit is not backdated.
 - Extraction version 2 changes the payload shape. A stored version-1 baseline is
   rebaselined in silence and is never decoded with the new decoder, so an
   upgrade neither replays the archive nor fails the poll.
-- Readers keep entries they were already sent. Expiry is not retraction, and the
-  feed is not a live departure board.
+- Readers keep entries they were already sent: expiry is not retraction, and
+  the feed is not a live departure board. What changes is the served feed — the
+  handler asks the Flow at render time (`rfs.LiveFlow`) and stops offering a
+  stored entry once its window ends or its publication leaves the freshness
+  window, so a subscriber never receives one for the first time. The rail and
+  catalog feeds do not implement that contract and keep their full history.
 - Not implemented: fetching a notice's own page to recover validity dates the
   collection omits. It would add one request per notice, so it is out of scope
   until an operator page makes it necessary.

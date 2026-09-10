@@ -143,8 +143,12 @@ an end or publication-age boundary emits nothing and need not mutate the baselin
 therefore needs no forced fetch or artificial change just to mark expiry. The next
 changed response evaluates candidates against the current poll instant.
 
-Already-published snapshots remain historical entries, not a live active-status
-view. This design does not promise to retract expired items from RSS readers.
+Already-published snapshots stay stored, so a notice that stops being live is
+still in the history of a reader that already fetched it. The feed, however,
+stops offering it: `notices.Flow` implements `rfs.LiveFlow` and the handler
+filters stored entries at render time against the same predicate, so an expired
+or aged-out entry leaves the feed without waiting for a poll and without a
+subscriber receiving it for the first time.
 
 ## Presentation and feed timestamps
 

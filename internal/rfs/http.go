@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type SnapshotReader interface {
@@ -16,14 +17,28 @@ type HTTPHandler struct {
 	sources        map[string]Source
 	orderedSources []Source
 	build          BuildInfo
+	clock          Clock
 }
 
 func NewHTTPHandler(store SnapshotReader, sources []Source, build BuildInfo) http.Handler {
+	return NewHTTPHandlerWithClock(store, sources, build, nil)
+}
+
+// NewHTTPHandlerWithClock is NewHTTPHandler with an explicit clock, so a caller
+// can pin the instant liveness is judged at. A nil clock reads the wall clock.
+func NewHTTPHandlerWithClock(store SnapshotReader, sources []Source, build BuildInfo, clock Clock) http.Handler {
 	byID := make(map[string]Source, len(sources))
 	for _, source := range sources {
 		byID[source.ID] = source
 	}
-	return HTTPHandler{store: store, sources: byID, orderedSources: sources, build: build}
+	return HTTPHandler{store: store, sources: byID, orderedSources: sources, build: build, clock: clock}
+}
+
+func (h HTTPHandler) now() time.Time {
+	if h.clock == nil {
+		return time.Now().UTC()
+	}
+	return h.clock.Now()
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -68,6 +83,7 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "load feed snapshot", http.StatusInternalServerError)
 		return
 	}
+	items = liveItems(source, items, h.now())
 
 	switch format {
 	case "xml":

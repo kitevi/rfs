@@ -392,6 +392,84 @@ func TestBusFeedUpgradeRebaselinesWithoutReplayingTheArchive(t *testing.T) {
 	}
 }
 
+// TestBusFeedStopsServingEntriesThatAreNoLongerLive reproduces the state the
+// deployment was in before the upgrade: rows a previous build had already
+// published, including notices months outside the freshness window. The feed has
+// to stop offering them even though the last poll stored them and nothing
+// upstream has changed.
+func TestBusFeedStopsServingEntriesThatAreNoLongerLive(t *testing.T) {
+	ctx := context.Background()
+	store, err := rfs.OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	source := sourceByID(t, "arriva-udine")
+	flow := notices.Flow{Operator: "Arriva Udine", Parser: arrivaudine.ParseNotices}
+	extracted, err := flow.Extract(fixture(t, "arrivaudine/testdata/notices_20260910.json"))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	// The previous build announced every notice it saw, storing its own
+	// single-date payload — which is what the deployment is holding today.
+	list, err := arrivaudine.ParseNotices(fixture(t, "arrivaudine/testdata/notices_20260910.json"))
+	if err != nil {
+		t.Fatalf("parse fixture: %v", err)
+	}
+	published := make([]rfs.Item, 0, len(list))
+	for _, notice := range list {
+		// The previous build stored the date as it rendered it: dd/mm/yyyy.
+		date := ""
+		if notice.Published.Known() {
+			date = notice.Published.Time.In(notices.Local()).Format("02/01/2006")
+		}
+		payload, err := json.Marshal(map[string]any{
+			"v": 1,
+			"notice": map[string]string{
+				"ID": notice.ID, "Title": notice.Title, "Summary": notice.Summary,
+				"Link": notice.Link, "Date": date,
+			},
+		})
+		if err != nil {
+			t.Fatalf("marshal legacy payload: %v", err)
+		}
+		published = append(published, rfs.Item{
+			GUID:        source.ID + ":1:" + notice.ID,
+			Title:       notice.Title,
+			Link:        notice.Link,
+			Description: string(payload),
+			PubDate:     capturedAt(),
+		})
+	}
+	if len(published) != 10 {
+		t.Fatalf("seeded %d rows, want the 10 the fixture lists", len(published))
+	}
+	if err := store.SaveChanges(ctx, source.ID, rfs.ChangeState{Items: extracted, Version: flow.Version(), Revision: 1, Initialized: true}, published, rfs.FetchCache{ExtractVersion: flow.Version()}); err != nil {
+		t.Fatalf("seed published rows: %v", err)
+	}
+
+	handler := rfs.NewHTTPHandlerWithClock(store, sources.All(), rfs.BuildInfo{}, feedClock{now: capturedAt()})
+	for _, path := range []string{"/feeds/arriva-udine.xml", "/feeds/arriva-udine.html"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusOK {
+			t.Fatalf("%s status = %d", path, recorder.Code)
+		}
+		body := recorder.Body.String()
+		if strings.Contains(body, "periodo pasquale") {
+			t.Fatalf("%s still serves a notice months outside the freshness window", path)
+		}
+		for _, want := range []string{"per il giorno 10 settembre 2026", "nuovi orari"} {
+			if !strings.Contains(body, want) {
+				t.Fatalf("%s lost the live notice %q", path, want)
+			}
+		}
+		if items := strings.Count(body, "<item>"); path == "/feeds/arriva-udine.xml" && items != 2 {
+			t.Fatalf("%s serves %d items, want the 2 notices still inside the window", path, items)
+		}
+	}
+}
+
 func renderBoth(t *testing.T, source rfs.Source, items []rfs.Item) (rss string, html string) {
 	t.Helper()
 	rssBytes, err := rfs.RenderRSS(source.Meta, items)

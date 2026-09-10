@@ -8,6 +8,65 @@ import (
 	"time"
 )
 
+// liveStubFlow is a stored-feed Flow that reports one entry as no longer live.
+type liveStubFlow struct{ stale string }
+
+func (liveStubFlow) Extract(Page) ([]ExtractedItem, error) { return nil, nil }
+func (liveStubFlow) Version() int                          { return 1 }
+func (f liveStubFlow) LiveAt(item Item, _ time.Time) bool  { return item.GUID != f.stale }
+
+// TestFeedStopsServingEntriesTheFlowReportsAsNoLongerLive covers the deployed
+// state rather than the poll: rows a previous build stored are still in the
+// snapshot, and the feed must stop offering the ones that are no longer live
+// without waiting for upstream to change.
+func TestFeedStopsServingEntriesTheFlowReportsAsNoLongerLive(t *testing.T) {
+	ctx := t.Context()
+	store, err := OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	pubDate := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
+	if err := store.SaveSnapshot(ctx, "notices", []Item{
+		{GUID: "notices:1:live", Title: "Linea 9 deviata", Link: "https://example.com/live", PubDate: pubDate},
+		{GUID: "notices:1:stale", Title: "Orari pasquali", Link: "https://example.com/stale", PubDate: pubDate},
+	}); err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+
+	for _, tc := range []struct {
+		name  string
+		flow  Flow
+		stale bool
+	}{
+		{"flow reports liveness", liveStubFlow{stale: "notices:1:stale"}, true},
+		{"flow reports nothing", plainStubFlow{}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := NewHTTPHandlerWithClock(store, []Source{{
+				ID:   "notices",
+				Meta: SourceMeta{Title: "Bus notices"},
+				Flow: tc.flow,
+			}}, testBuildInfo, fixedClock{now: pubDate})
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/feeds/notices.xml", nil))
+			body := recorder.Body.String()
+			if !strings.Contains(body, "Linea 9 deviata") {
+				t.Fatalf("the feed lost a live entry: %s", body)
+			}
+			if got := strings.Contains(body, "Orari pasquali"); got == tc.stale {
+				t.Fatalf("stale entry served = %v, want %v: %s", got, !tc.stale, body)
+			}
+		})
+	}
+}
+
+// plainStubFlow is a stored-feed Flow with no opinion about liveness.
+type plainStubFlow struct{}
+
+func (plainStubFlow) Extract(Page) ([]ExtractedItem, error) { return nil, nil }
+func (plainStubFlow) Version() int                          { return 1 }
+
 var testBuildInfo = BuildInfo{
 	Version:    "test-1.2.3",
 	Commit:     "abc1234",

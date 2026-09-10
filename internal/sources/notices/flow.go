@@ -125,6 +125,69 @@ func (f Flow) ChangesAt(at time.Time, previous, current []rfs.ExtractedItem) ([]
 	return changes, nil
 }
 
+// LiveAt reports whether a stored feed entry still describes a notice a
+// subscriber should see. rfs asks this while rendering the feed, so an entry
+// leaves the feed when its window ends instead of waiting for the next poll to
+// notice.
+func (f Flow) LiveAt(item rfs.Item, at time.Time) bool {
+	notice, err := storedNotice(item.Description)
+	if err != nil {
+		// A payload this build cannot read is not grounds for hiding an entry.
+		return true
+	}
+	return Eligible(notice, at)
+}
+
+// storedNotice reads the notice out of a stored description. Entries an older
+// poll stored are still served, so the shape from before the payload version
+// bump — a single free-text date and no window — is read too.
+func storedNotice(description string) (Notice, error) {
+	var decoded struct {
+		Version int `json:"v"`
+		Notice  struct {
+			ID        string
+			Title     string
+			Summary   string
+			Link      string
+			Published Date
+			Validity  Validity
+			Date      string
+		} `json:"notice"`
+	}
+	if err := json.Unmarshal([]byte(description), &decoded); err != nil {
+		return Notice{}, fmt.Errorf("notices: decode stored entry: %w", err)
+	}
+	notice := Notice{
+		ID:        decoded.Notice.ID,
+		Title:     decoded.Notice.Title,
+		Summary:   decoded.Notice.Summary,
+		Link:      decoded.Notice.Link,
+		Published: decoded.Notice.Published,
+		Validity:  decoded.Notice.Validity,
+	}
+	if decoded.Version < payloadVersion {
+		notice.Published = legacyDate(decoded.Notice.Date)
+		notice.Validity = Validity{}
+	}
+	return notice, nil
+}
+
+// legacyDate reads the date older payloads carried: dd/mm/yyyy, with a clock
+// time appended by the builds that decoded one. Both are day precision, because
+// the date older payloads stored was a day.
+func legacyDate(text string) Date {
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return Date{}
+	}
+	for _, layout := range []string{"02/01/2006", "02/01/2006 15:04"} {
+		if parsed, err := time.ParseInLocation(layout, trimmed, rome); err == nil {
+			return DayDate(parsed)
+		}
+	}
+	return Date{Text: trimmed}
+}
+
 // feedTime is the timestamp a new feed entry carries: the notice's own
 // publication time when the page stated one, it is precise enough to mean an
 // instant, and it is not in the future. Otherwise nil, so the entry keeps the
