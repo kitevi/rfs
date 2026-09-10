@@ -6,7 +6,7 @@ import "time"
 // subscriber should see. rfs asks while rendering the feed, so an entry stops
 // being served as soon as its own window ends rather than when the next poll
 // happens to notice. A Flow that does not implement this interface keeps its
-// whole stored history, which is what the rail and catalog feeds rely on.
+// whole stored history, which is what the catalog feeds rely on.
 type LiveFlow interface {
 	Flow
 	LiveAt(Item, time.Time) bool

@@ -4,17 +4,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ppowo/rfs/internal/rfs"
 	"github.com/ppowo/rfs/internal/sources"
 	"github.com/ppowo/rfs/internal/sources/film"
-	"github.com/ppowo/rfs/internal/sources/notices"
 	"github.com/ppowo/rfs/internal/sources/ptg"
-	"github.com/ppowo/rfs/internal/sources/trenitalia"
 )
-
-// The bus feeds decide what to announce from the poll instant, so they must
-// satisfy the clock-aware comparison contract the engine dispatches on.
-var _ rfs.ClockedChangeFlow = notices.Flow{}
 
 func TestAllIncludesPTGSource(t *testing.T) {
 	var found bool
@@ -67,17 +60,15 @@ func TestAllIncludesFilmSource(t *testing.T) {
 }
 
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
-// osmer-rain-trieste, and ptv-remote-italy-jobs Flows were removed.
+// osmer-rain-trieste, ptv-remote-italy-jobs, and transport
+// (arriva-udine, trieste-trasporti, apt-gorizia, trenitalia-disruptions) Flows
+// were removed.
 func TestAllExcludesRemovedSources(t *testing.T) {
 	want := map[string]bool{
 		"meltzer-5-star-matches": true,
 		"ptg":                    true,
 		"film":                   true,
 		"seadex":                 true,
-		"trenitalia-disruptions": true,
-		"arriva-udine":           true,
-		"trieste-trasporti":      true,
-		"apt-gorizia":            true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -89,79 +80,12 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 8 {
-		t.Fatalf("len(sources.All()) = %d, want 8", len(all))
+	if len(all) != 4 {
+		t.Fatalf("len(sources.All()) = %d, want 4", len(all))
 	}
 }
 
-func TestAllRegistersRailFeed(t *testing.T) {
-	for _, source := range sources.All() {
-		if source.ID != "trenitalia-disruptions" {
-			continue
-		}
-		if source.URL != trenitalia.PageURL {
-			t.Fatalf("source URL = %q, want %q", source.URL, trenitalia.PageURL)
-		}
-		if source.Meta.Link != trenitalia.HumanURL {
-			t.Fatalf("source link = %q, want %q", source.Meta.Link, trenitalia.HumanURL)
-		}
-		if source.Meta.Title == "" || source.Meta.Description == "" {
-			t.Fatalf("source metadata is incomplete: %#v", source.Meta)
-		}
-		if source.Meta.ItemDescriptionsHTML {
-			t.Fatal("upstream notice text must not be rendered as HTML")
-		}
-		if source.EmitInitial != true {
-			t.Fatal("the notices already in force must be published on the first run")
-		}
-		if source.Flow.Version() != trenitalia.ExtractVersion {
-			t.Fatalf("flow version = %d, want %d", source.Flow.Version(), trenitalia.ExtractVersion)
-		}
-		if !source.EmitVersionChanges {
-			t.Fatal("the widened rail scope must reach subscribers from before the widening")
-		}
-		if _, ok := source.Flow.(rfs.ChangeFlow); !ok {
-			t.Fatal("the rail notice Flow must compare complete observations")
-		}
-		return
-	}
-	t.Fatal("sources.All does not include the trenitalia-disruptions source")
-}
-
-// TestOnlyRailFeedComparesAcrossExtractVersionChanges pins the version-change
-// opt-in: a Source may compare across a bump only when its Flow treats an older
-// stored payload as state rather than as a change, which today means the rail
-// Flow.
-func TestOnlyRailFeedComparesAcrossExtractVersionChanges(t *testing.T) {
-	for _, source := range sources.All() {
-		if source.EmitVersionChanges && source.ID != "trenitalia-disruptions" {
-			t.Fatalf("source %s compares across a version change unexpectedly", source.ID)
-		}
-	}
-}
-
-// TestOnlyOperatorFeedsPublishTheirFirstObservation pins the initial-emission
-// opt-in to the operator notice feeds: SeaDex and every projection feed keep
-// ADR 0008's silent baseline.
-func TestOnlyOperatorFeedsPublishTheirFirstObservation(t *testing.T) {
-	want := map[string]bool{
-		"trenitalia-disruptions": true,
-		"arriva-udine":           true,
-		"trieste-trasporti":      true,
-		"apt-gorizia":            true,
-	}
-	for _, source := range sources.All() {
-		if source.EmitInitial && !want[source.ID] {
-			t.Fatalf("source %s publishes its first observation unexpectedly", source.ID)
-		}
-		if !source.EmitInitial && want[source.ID] {
-			t.Fatalf("source %s must publish the notices already in force", source.ID)
-		}
-	}
-}
-
-// TestAllSourceRegistrationsAreUniqueAndWellFormed verifies every registration,
-// not just the operator notice feeds.
+// TestAllSourceRegistrationsAreUniqueAndWellFormed verifies every registration.
 func TestAllSourceRegistrationsAreUniqueAndWellFormed(t *testing.T) {
 	seen := map[string]bool{}
 	for _, source := range sources.All() {
