@@ -25,7 +25,7 @@ func TestFlowEmitsLiveThread(t *testing.T) {
 	if item.Link != "https://boards.4chan.org/g/thread/109697201/" {
 		t.Fatalf("unexpected link: %q", item.Link)
 	}
-	if item.Title != "/ptg/ - Private Trackers General \u2014 the tummies remain private Edition" {
+	if item.Title != "Private Trackers General \u2014 the tummies remain private Edition" {
 		t.Fatalf("unexpected title: %q", item.Title)
 	}
 	wantDate := time.Unix(1788200342, 0).UTC()
@@ -108,7 +108,7 @@ func TestFlowDecodesComFragment(t *testing.T) {
 	if items[0].Description != wantDesc {
 		t.Fatalf("unexpected description: %q, want %q", items[0].Description, wantDesc)
 	}
-	if items[0].Title != "/ptg/ - Private Trackers General \u2014 RED edition" {
+	if items[0].Title != "Private Trackers General \u2014 RED edition" {
 		t.Fatalf("unexpected title: %q", items[0].Title)
 	}
 }
@@ -125,7 +125,7 @@ func TestFlowVersion(t *testing.T) {
 	if (ptg.Flow{}).Version() != ptg.ExtractVersion {
 		t.Fatalf("Version() = %d, want %d", (ptg.Flow{}).Version(), ptg.ExtractVersion)
 	}
-	if ptg.ExtractVersion != 4 {
-		t.Fatalf("ExtractVersion = %d, want 4 (replies for maturity filter must invalidate snapshots)", ptg.ExtractVersion)
+	if ptg.ExtractVersion != 5 {
+		t.Fatalf("ExtractVersion = %d, want 5 (title stripping must invalidate stored snapshots)", ptg.ExtractVersion)
 	}
 }

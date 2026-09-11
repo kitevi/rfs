@@ -22,7 +22,7 @@ func historyItem(guid string, daysAgo int, replies int) Item {
 	return Item{
 		GUID:        guid,
 		Title:       "Title " + guid,
-		Link:        "https://boards.4chan.org/g/thread/" + guid + "/",
+		Link:        "https://example.org/thread/" + guid + "/",
 		Description: "desc " + guid,
 		PubDate:     time.Date(2026, 8, 20-daysAgo, 12, 0, 0, 0, time.UTC),
 		Replies:     replies,

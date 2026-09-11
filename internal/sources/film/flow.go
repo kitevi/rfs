@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	// PageURL is the 4chan catalog API resource rfs polls for /film/ threads.
+	// PageURL is the board catalog API resource rfs polls for /film/ threads.
 	PageURL = "https://a.4cdn.org/tv/catalog.json"
 	// HumanURL is the human-facing catalog view linked from feed metadata.
 	HumanURL = "https://boards.4chan.org/tv/catalog#s=film"
@@ -24,7 +24,7 @@ const (
 
 // ExtractVersion is the derivation version for the /film/ Flow. Bump it when
 // Extract's output can change for a fixed catalog page.
-const ExtractVersion = 3
+const ExtractVersion = 4
 
 type Flow struct{}
 
@@ -45,9 +45,9 @@ type catalogThread struct {
 	Images  int    `json:"images"`
 }
 
-// Extract turns each /film/ opening post in the 4chan catalog into one RSS
+// Extract turns each /film/ opening post in the board catalog into one RSS
 // item. The catalog lists only live threads, so every match is emitted
-// directly: unlike the former 4plebs search, there is no superseded-only rule
+// directly: unlike the former archive search, there is no superseded-only rule
 // and no live thread to drop. Matching is on the subject alone: /film/
 // threads are the arthouse general by definition, so the old
 // text=arthouse search qualifier is not carried over.
@@ -89,6 +89,17 @@ func matchSubject(sub string) bool {
 	return strings.Contains(strings.ToLower(sub), "/film/")
 }
 
+// stripThreadName removes the /film/ marker from a catalog subject so feed
+// titles do not carry it. Dashes and spaces around the marker go too.
+func stripThreadName(sub string) string {
+	idx := strings.Index(strings.ToLower(sub), "/film/")
+	if idx < 0 {
+		return strings.TrimSpace(sub)
+	}
+	rest := sub[:idx] + sub[idx+len("/film/"):]
+	return strings.TrimSpace(strings.TrimLeft(rest, " -\u2013\u2014\t"))
+}
+
 func extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 	if t.No <= 0 || t.Resto != 0 {
 		return rfs.ExtractedItem{}, false
@@ -101,9 +112,13 @@ func extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 	if description == "" {
 		return rfs.ExtractedItem{}, false
 	}
-	title := t.Sub
+	title := stripThreadName(t.Sub)
 	if firstLine := strings.SplitN(description, "\n", 2)[0]; firstLine != "" {
-		title += " \u2014 " + firstLine
+		if title == "" {
+			title = firstLine
+		} else {
+			title += " \u2014 " + firstLine
+		}
 	}
 	pubDate := time.Unix(t.Time, 0).UTC()
 	replies := t.Replies
@@ -120,7 +135,7 @@ func extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 	}, true
 }
 
-// decodeComFragment turns a 4chan OP HTML fragment (br, wbr, entities,
+// decodeComFragment turns an opening-post HTML fragment (br, wbr, entities,
 // quotelink anchors) into normalized plain text.
 func decodeComFragment(fragment string) string {
 	doc, err := html.Parse(strings.NewReader("<div>" + fragment + "</div>"))

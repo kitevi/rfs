@@ -38,9 +38,9 @@ type HistoryPolicy struct {
 	MinLiveReplies int
 }
 
-// DefaultCatalogHistory is the agreed window for /ptg/ and /film/: keep the
-// last 10 superseded threads visible, store 11 to buffer 1 live thread, and
-// surface a live thread once it has 100 posts.
+// DefaultCatalogHistory is the agreed window for the board catalog history
+// sources: keep the last 10 superseded threads visible, store 11 to buffer
+// 1 live thread, and surface a live thread once it has 100 posts.
 func DefaultCatalogHistory() *HistoryPolicy {
 	return &HistoryPolicy{VisibleLimit: 10, StoredLimit: 11, MinLiveReplies: 100}
 }

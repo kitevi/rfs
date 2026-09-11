@@ -25,7 +25,7 @@ func TestFlowEmitsLiveThread(t *testing.T) {
 	if item.Link != "https://boards.4chan.org/tv/thread/222965645/" {
 		t.Fatalf("unexpected link: %q", item.Link)
 	}
-	if item.Title != "/film/ \u2014 Arthouse & Classics" {
+	if item.Title != "Arthouse & Classics" {
 		t.Fatalf("unexpected title: %q", item.Title)
 	}
 	wantDate := time.Unix(1788463410, 0).UTC()
@@ -105,7 +105,7 @@ func TestFlowDecodesComFragment(t *testing.T) {
 	if items[0].Description != wantDesc {
 		t.Fatalf("unexpected description: %q, want %q", items[0].Description, wantDesc)
 	}
-	if items[0].Title != "/film/ \u2014 Thread for the discussion of arthouse and classic cinema." {
+	if items[0].Title != "Thread for the discussion of arthouse and classic cinema." {
 		t.Fatalf("unexpected title: %q", items[0].Title)
 	}
 }
@@ -122,7 +122,7 @@ func TestFlowVersion(t *testing.T) {
 	if (film.Flow{}).Version() != film.ExtractVersion {
 		t.Fatalf("Version() = %d, want %d", (film.Flow{}).Version(), film.ExtractVersion)
 	}
-	if film.ExtractVersion != 3 {
-		t.Fatalf("ExtractVersion = %d, want 3 (replies for maturity filter must invalidate snapshots)", film.ExtractVersion)
+	if film.ExtractVersion != 4 {
+		t.Fatalf("ExtractVersion = %d, want 4 (title stripping must invalidate stored snapshots)", film.ExtractVersion)
 	}
 }

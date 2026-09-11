@@ -19,7 +19,7 @@ func TestAllIncludesPTGSource(t *testing.T) {
 		if source.URL != ptg.PageURL {
 			t.Fatalf("ptg source URL = %q, want %q", source.URL, ptg.PageURL)
 		}
-		if source.Meta.Title != "/ptg/ - Private Trackers General" {
+		if source.Meta.Title != "Private Trackers General" {
 			t.Fatalf("ptg source title = %q", source.Meta.Title)
 		}
 		if source.Meta.Link != ptg.HumanURL {
@@ -44,7 +44,7 @@ func TestAllIncludesFilmSource(t *testing.T) {
 		if source.URL != film.PageURL {
 			t.Fatalf("film source URL = %q, want %q", source.URL, film.PageURL)
 		}
-		if source.Meta.Title != "/film/ - Arthouse & Classic Cinema" {
+		if source.Meta.Title != "Arthouse & Classic Cinema" {
 			t.Fatalf("film source title = %q", source.Meta.Title)
 		}
 		if source.Meta.Link != film.HumanURL {

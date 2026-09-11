@@ -35,8 +35,8 @@ func All() []rfs.Source {
 			ID:  "ptg",
 			URL: ptg.PageURL,
 			Meta: rfs.SourceMeta{
-				Title:       "/ptg/ - Private Trackers General",
-				Description: "Latest /ptg/ opening posts via the 4chan catalog.",
+				Title:       "Private Trackers General",
+				Description: "Latest /ptg/ opening posts via the board catalog.",
 				Link:        ptg.HumanURL,
 			},
 			Flow:    ptg.Flow{},
@@ -46,8 +46,8 @@ func All() []rfs.Source {
 			ID:  "film",
 			URL: film.PageURL,
 			Meta: rfs.SourceMeta{
-				Title:       "/film/ - Arthouse & Classic Cinema",
-				Description: "Latest /film/ opening posts via the 4chan catalog.",
+				Title:       "Arthouse & Classic Cinema",
+				Description: "Latest /film/ opening posts via the board catalog.",
 				Link:        film.HumanURL,
 			},
 			Flow:    film.Flow{},

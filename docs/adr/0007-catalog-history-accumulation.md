@@ -1,13 +1,13 @@
-# Catalog history accumulation for /ptg/ and /film/
+# Catalog history accumulation for the board catalog sources
 
-Amends 0001 (current-state projections) for the two 4chan catalog sources only.
+Amends 0001 (current-state projections) for the two board catalog sources only.
 
 `ptg` (`g/catalog.json`) and `film` (`tv/catalog.json`) discover via the
 catalog but accumulate observed threads in SQLite instead of replacing the
 snapshot. Catalogs list live threads only, so replace semantics can only ever
-serve the live thread; dead `boards.4chan.org/.../thread/<no>/` links remain
-readable via 4chan XT archive redirects, so keeping them restores the old
-Desuarchive/4plebs behaviour without archive traffic (which was blocking us).
+serve the live thread; dead thread links remain readable via archive-redirect
+browser extensions, so keeping them restores the old external-archive
+behaviour without archive traffic (which was blocking us).
 
 ## Rule
 
@@ -30,4 +30,5 @@ Desuarchive/4plebs behaviour without archive traffic (which was blocking us).
   successful poll for history sources; `LoadVisibleHistory` anti-joins live
   with the maturity predicate at serve time. Live is stored-then-hidden:
   dropping it before save would lose catalog threads forever.
-- `ExtractVersion` bumped for the parser change (`ptg` 3→4, `film` 2→3).
+- `ExtractVersion` bumped for the parser change (`ptg` 3→4, `film` 2→3) and
+  again when titles began omitting the thread name (`ptg` 4→5, `film` 3→4).
