@@ -12,8 +12,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ppowo/rfs/internal/rfs"
-	"github.com/ppowo/rfs/internal/sources/seadex"
+	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/sources/seadex"
 )
 
 const before = `{"page":1,"perPage":100,"totalPages":1,"totalItems":1,"items":[{"id":"kingsgame","alID":99698,"updated":"2026-09-08 18:00:00.000Z","trs":["oldbest","oldalt"],"notes":"NOGRP is FRA BD Remux+CR and PGS, missing fonts and signs track is PGS only\nAlmighty is USA BD Encode+PGS\njsum would be a better alt","expand":{"trs":[{"id":"oldbest","releaseGroup":"NOGRP","isBest":true,"tags":[]},{"id":"oldalt","releaseGroup":"Almighty","isBest":false,"tags":[]}]}}]}`

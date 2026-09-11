@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ppowo/rfs/internal/rfs"
-	"github.com/ppowo/rfs/internal/sources"
+	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/sources"
 )
 
 func shouldEnableSelfUpdate(buildVersion string, flagEnabled bool) bool {

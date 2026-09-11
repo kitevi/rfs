@@ -3,7 +3,7 @@ package main
 import (
 	"runtime"
 
-	"github.com/ppowo/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfs"
 )
 
 // Build metadata for the running rfs binary. version/commit/commitDate/buildDate

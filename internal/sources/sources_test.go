@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ppowo/rfs/internal/sources"
-	"github.com/ppowo/rfs/internal/sources/film"
-	"github.com/ppowo/rfs/internal/sources/ptg"
+	"github.com/kitevi/rfs/internal/sources"
+	"github.com/kitevi/rfs/internal/sources/film"
+	"github.com/kitevi/rfs/internal/sources/ptg"
 )
 
 func TestAllIncludesPTGSource(t *testing.T) {

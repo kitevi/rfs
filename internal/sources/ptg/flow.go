@@ -10,7 +10,7 @@ import (
 
 	"golang.org/x/net/html"
 
-	"github.com/ppowo/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfs"
 )
 
 const (

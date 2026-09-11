@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/ppowo/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfs"
 )
 
 func cachedRequest(endpoint string, items []rfs.ExtractedItem) (string, []byte, error) {

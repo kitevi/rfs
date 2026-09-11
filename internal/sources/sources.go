@@ -1,11 +1,11 @@
 package sources
 
 import (
-	"github.com/ppowo/rfs/internal/rfs"
-	"github.com/ppowo/rfs/internal/sources/film"
-	"github.com/ppowo/rfs/internal/sources/meltzer"
-	"github.com/ppowo/rfs/internal/sources/ptg"
-	"github.com/ppowo/rfs/internal/sources/seadex"
+	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/sources/film"
+	"github.com/kitevi/rfs/internal/sources/meltzer"
+	"github.com/kitevi/rfs/internal/sources/ptg"
+	"github.com/kitevi/rfs/internal/sources/seadex"
 )
 
 func All() []rfs.Source {

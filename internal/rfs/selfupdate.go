@@ -164,7 +164,7 @@ func (u Updater) Check(ctx context.Context) (UpdateCheckResult, error) {
 }
 
 const (
-	selfUpdateRepo             = "ppowo/rfs"
+	selfUpdateRepo             = "kitevi/rfs"
 	defaultUpdateCheckInterval = 10 * time.Minute
 	defaultUpdateCheckTimeout  = 30 * time.Second
 )

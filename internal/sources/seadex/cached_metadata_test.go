@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ppowo/rfs/internal/rfs"
-	"github.com/ppowo/rfs/internal/sources/seadex"
+	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/sources/seadex"
 )
 
 // No JSONFetcher: cached metadata must go through the standard GET path.

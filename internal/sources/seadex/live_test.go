@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ppowo/rfs/internal/rfs"
-	"github.com/ppowo/rfs/internal/sources"
+	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/sources"
 )
 
 // Run explicitly on the deployment host; never contacts upstream in normal tests.

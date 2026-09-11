@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ppowo/rfs/internal/rfs"
-	"github.com/ppowo/rfs/internal/sources/film"
+	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/sources/film"
 )
 
 func TestFlowEmitsLiveThread(t *testing.T) {

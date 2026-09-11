@@ -8,9 +8,9 @@ import (
 
 	"golang.org/x/net/html"
 
-	"github.com/ppowo/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfs"
 
-	"github.com/ppowo/rfs/internal/sources/meltzer"
+	"github.com/kitevi/rfs/internal/sources/meltzer"
 )
 
 func TestFlowExtractsMatchRowsAsItems(t *testing.T) {

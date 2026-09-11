@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ppowo/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfs"
 )
 
 func TestShouldEnableSelfUpdate(t *testing.T) {

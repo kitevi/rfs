@@ -67,7 +67,7 @@ func (f HTTPFetcher) FetchJSON(ctx context.Context, url string, body []byte) (Fe
 }
 
 func (f HTTPFetcher) fetch(req *http.Request, cache FetchCache) (FetchResult, error) {
-	req.Header.Set("User-Agent", "rfs/0.1 (+https://github.com/ppowo/rfs)")
+	req.Header.Set("User-Agent", "rfs/0.1 (+https://github.com/kitevi/rfs)")
 	if cache.ETag != "" {
 		req.Header.Set("If-None-Match", cache.ETag)
 	}
