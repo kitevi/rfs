@@ -14,7 +14,8 @@ type SnapshotStore interface {
 	LoadFetchCache(context.Context, string) (FetchCache, error)
 	SaveFetchCache(context.Context, string, FetchCache) error
 	SaveSnapshot(context.Context, string, []Item) error
-	MergeHistory(context.Context, string, []Item, []string, int) error
+	CommitHistory(context.Context, string, []Item, []string, int, FetchCache, HistoryRebuilderFunc) error
+	LoadLiveGUIDs(context.Context, string) ([]string, error)
 	FirstSeen(context.Context, string, string, time.Time) (time.Time, error)
 }
 
@@ -63,8 +64,9 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 	// produced the stored snapshot, drop the conditional headers for this one
 	// fetch so the server returns the full page and Extract re-runs against
 	// it, overwriting the stale snapshot below.
+	versionChanged := source.Flow.Version() != cache.ExtractVersion
 	requestCache := cache
-	if source.Flow.Version() != cache.ExtractVersion {
+	if versionChanged {
 		requestCache = FetchCache{}
 	}
 
@@ -153,9 +155,27 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		for _, item := range items {
 			liveGUIDs = append(liveGUIDs, item.GUID)
 		}
-		if err := p.Store.MergeHistory(ctx, source.ID, items, liveGUIDs, keepStored); err != nil {
+		if len(liveGUIDs) == 0 {
+			// An empty successful observation (a parseable catalog gap) must
+			// not wipe the stored live set; preserve it so pruning and
+			// visibility survive until the next poll heals.
+			kept, err := p.Store.LoadLiveGUIDs(ctx, source.ID)
+			if err != nil {
+				return PollResult{}, err
+			}
+			liveGUIDs = kept
+		}
+		var rebuild HistoryRebuilderFunc
+		if versionChanged {
+			if flow, ok := source.Flow.(HistoryRebuilder); ok {
+				rebuild = flow.RebuildStored
+			}
+		}
+		savedCache.ExtractVersion = source.Flow.Version()
+		if err := p.Store.CommitHistory(ctx, source.ID, items, liveGUIDs, keepStored, savedCache, rebuild); err != nil {
 			return PollResult{}, err
 		}
+		return PollResult{Status: PollUpdated}, nil
 	} else if err := p.Store.SaveSnapshot(ctx, source.ID, items); err != nil {
 		return PollResult{}, err
 	}

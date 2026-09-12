@@ -118,11 +118,23 @@ func TestFlowRejectsInvalidJSON(t *testing.T) {
 	}
 }
 
+func TestRebuildStripsLegacyPrefix(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{"/film/ - Arthouse & Classic Cinema \u2014 noir edition", "Arthouse & Classic Cinema \u2014 noir edition"},
+		{"/film/ - Arthouse & Classic Cinema", "Arthouse & Classic Cinema"},
+		{"Arthouse & Classic Cinema \u2014 noir edition", "Arthouse & Classic Cinema \u2014 noir edition"},
+	} {
+		if got, err := (film.Flow{}).RebuildStored(rfs.Item{Title: tc.in}); err != nil || got.Title != tc.want {
+			t.Fatalf("RebuildStored(%q) = %q, want %q", tc.in, got.Title, tc.want)
+		}
+	}
+}
+
 func TestFlowVersion(t *testing.T) {
 	if (film.Flow{}).Version() != film.ExtractVersion {
 		t.Fatalf("Version() = %d, want %d", (film.Flow{}).Version(), film.ExtractVersion)
 	}
-	if film.ExtractVersion != 4 {
-		t.Fatalf("ExtractVersion = %d, want 4 (title stripping must invalidate stored snapshots)", film.ExtractVersion)
+	if film.ExtractVersion != 5 {
+		t.Fatalf("ExtractVersion = %d, want 5 (history rebuild must replay over stored rows)", film.ExtractVersion)
 	}
 }

@@ -24,7 +24,7 @@ const (
 
 // ExtractVersion is the derivation version for the /ptg/ Flow. Bump it when
 // Extract's output can change for a fixed catalog page.
-const ExtractVersion = 5
+const ExtractVersion = 6
 
 type Flow struct{}
 
@@ -98,6 +98,11 @@ func stripThreadName(sub string) string {
 	return strings.TrimSpace(strings.TrimLeft(rest, " -\u2013\u2014\t"))
 }
 
+// RebuildStored uses the same derivation as fresh catalog extraction.
+func (Flow) RebuildStored(old rfs.Item) (rfs.Item, error) {
+	return rfs.RebuildFromSavedInput(old, "ptg", "/ptg/", extractThread, stripThreadName)
+}
+
 func extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 	if t.No <= 0 || t.Resto != 0 {
 		return rfs.ExtractedItem{}, false
@@ -123,7 +128,9 @@ func extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 	if replies < 0 {
 		replies = 0
 	}
+	raw, _ := json.Marshal(t) // catalogThread contains only JSON-safe fields.
 	return rfs.ExtractedItem{
+		Metadata:    string(raw),
 		GUID:        "ptg:" + id,
 		Title:       title,
 		Link:        threadBaseURL + id + "/",

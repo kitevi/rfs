@@ -28,6 +28,19 @@ type Flow interface {
 	Version() int
 }
 
+// HistoryRebuilder re-derives a stored item from its flow-owned Metadata on an
+// extraction-version change. Implementations must be pure, deterministic, and
+// preserve GUID and PubDate. An undecodable input returns an error: the store
+// preserves that row and rebuilds the rest. Returning an item with a changed
+// GUID or PubDate aborts the poll and preserves the prior state.
+type HistoryRebuilder interface {
+	RebuildStored(Item) (Item, error)
+}
+
+// HistoryRebuildFunc re-derives one stored item from its flow-owned Metadata.
+// A nil func skips rebuilding; see CommitHistory.
+type HistoryRebuilderFunc = func(Item) (Item, error)
+
 // HistoryPolicy opts a Source into catalog-history accumulation instead of
 // snapshot replace. Stored rows are pruned to StoredLimit (never deleting
 // live GUIDs); feeds serve at most VisibleLimit rows, hiding live threads

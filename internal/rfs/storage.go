@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -193,24 +194,31 @@ func (s *SQLiteStore) LoadSnapshot(ctx context.Context, sourceID string) ([]Item
 // newest (pub_date DESC, guid ASC). Live GUIDs are never pruned. The three
 // steps run in one transaction.
 func (s *SQLiteStore) MergeHistory(ctx context.Context, sourceID string, items []Item, liveGUIDs []string, keepStored int) error {
-	if keepStored <= 0 {
-		keepStored = 11
-	}
-	deduped := dedupeLiveGUIDs(liveGUIDs)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer rollbackUnlessCommitted(tx)
+	if err := mergeHistoryTx(ctx, tx, sourceID, items, liveGUIDs, keepStored); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func mergeHistoryTx(ctx context.Context, tx *sql.Tx, sourceID string, items []Item, liveGUIDs []string, keepStored int) error {
+	if keepStored <= 0 {
+		keepStored = 11
+	}
+	deduped := dedupeLiveGUIDs(liveGUIDs)
 
 	if len(items) > 0 {
-		stmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, replies) VALUES (?, ?, ?, ?, ?, ?, ?)
-			ON CONFLICT(source_id, guid) DO UPDATE SET title = excluded.title, link = excluded.link, description = excluded.description, pub_date = excluded.pub_date, replies = excluded.replies`)
+		stmt, err := tx.PrepareContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, replies, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(source_id, guid) DO UPDATE SET title = excluded.title, link = excluded.link, description = excluded.description, pub_date = excluded.pub_date, replies = excluded.replies, metadata = excluded.metadata`)
 		if err != nil {
 			return err
 		}
 		for _, item := range items {
-			if _, err := stmt.ExecContext(ctx, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Replies); err != nil {
+			if _, err := stmt.ExecContext(ctx, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Replies, item.Metadata); err != nil {
 				_ = stmt.Close()
 				return err
 			}
@@ -238,7 +246,7 @@ func (s *SQLiteStore) MergeHistory(ctx context.Context, sourceID string, items [
 	if err := pruneHistoryTx(ctx, tx, sourceID, deduped, keepStored); err != nil {
 		return err
 	}
-	return tx.Commit()
+	return nil
 }
 
 func dedupeLiveGUIDs(guids []string) []string {
@@ -288,6 +296,75 @@ func pruneHistoryTx(ctx context.Context, tx *sql.Tx, sourceID string, liveGUIDs 
 
 func itoa(n int) string {
 	return fmt.Sprintf("%d", n)
+}
+
+// CommitHistory atomically rebuilds retained history, merges the current live
+// observation, prunes, and advances the HTTP/extraction checkpoint. A row whose
+// saved input no longer decodes is preserved and skipped; a rebuild that
+// changes identity aborts the transaction.
+func (s *SQLiteStore) CommitHistory(ctx context.Context, sourceID string, items []Item, liveGUIDs []string, keepStored int, cache FetchCache, rebuild func(Item) (Item, error)) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer rollbackUnlessCommitted(tx)
+	if rebuild != nil {
+		rows, err := tx.QueryContext(ctx, `SELECT guid, title, link, description, pub_date, replies, metadata FROM snapshots WHERE source_id = ?`, sourceID)
+		if err != nil {
+			return err
+		}
+		var stored []Item
+		for rows.Next() {
+			var item Item
+			var date string
+			if err := rows.Scan(&item.GUID, &item.Title, &item.Link, &item.Description, &date, &item.Replies, &item.Metadata); err != nil {
+				rows.Close()
+				return err
+			}
+			item.PubDate, err = parseStoreTime(date)
+			if err != nil {
+				rows.Close()
+				return err
+			}
+			stored = append(stored, item)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		// Fresh items supersede old inputs, including incomplete legacy inputs.
+		fresh := make(map[string]bool, len(items))
+		for _, item := range items {
+			fresh[item.GUID] = true
+		}
+		for _, old := range stored {
+			if fresh[old.GUID] {
+				continue
+			}
+			item, err := rebuild(old)
+			if err != nil {
+				// Undecodable inputs stay as they are: one bad row must not
+				// wedge the source. Each future version bump retries the
+				// rebuild, and a fresh observation still overwrites the row.
+				log.Printf("rfs: rebuild %s/%s skipped: %v", sourceID, old.GUID, err)
+				continue
+			}
+			if item.GUID != old.GUID || !item.PubDate.Equal(old.PubDate) {
+				return fmt.Errorf("rebuild %s/%s changed identity or publication date", sourceID, old.GUID)
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE snapshots SET title = ?, link = ?, description = ?, replies = ?, metadata = ? WHERE source_id = ? AND guid = ?`, item.Title, item.Link, item.Description, item.Replies, item.Metadata, sourceID, old.GUID); err != nil {
+				return err
+			}
+		}
+	}
+	if err := mergeHistoryTx(ctx, tx, sourceID, items, liveGUIDs, keepStored); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO fetch_cache (source_id, etag, last_modified, extract_version) VALUES (?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET etag = excluded.etag, last_modified = excluded.last_modified, extract_version = excluded.extract_version`, sourceID, cache.ETag, cache.LastModified, cache.ExtractVersion); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // LoadVisibleHistory serves history feeds: stored threads minus immature
