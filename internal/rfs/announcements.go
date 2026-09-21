@@ -62,8 +62,12 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 	if len(decision.Checkpoint) == 0 {
 		return PollResult{}, fmt.Errorf("poll %s: announcement flow returned an empty checkpoint", source.ID)
 	}
-	items := make([]Item, 0, len(decision.Announcements))
-	for _, announcement := range decision.Announcements {
+	announcements, err := p.enrichAnnouncements(ctx, flow, decision.Announcements)
+	if err != nil {
+		return pollFailure(err)
+	}
+	items := make([]Item, 0, len(announcements))
+	for _, announcement := range announcements {
 		if announcement.GUID == "" {
 			return PollResult{}, fmt.Errorf("poll %s: announcement without a GUID", source.ID)
 		}

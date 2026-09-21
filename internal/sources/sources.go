@@ -2,6 +2,7 @@ package sources
 
 import (
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/sources/acloserlisten"
 	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/meltzer"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
@@ -11,6 +12,9 @@ import (
 
 func All() []rfs.Source {
 	return []rfs.Source{
+		{ID: "acloserlisten", URL: acloserlisten.PageURL, Meta: rfs.SourceMeta{
+			Title: "A Closer Listen recommendations", Description: "New recommended albums, announced once per Bandcamp album.", Link: acloserlisten.HumanURL,
+		}, Flow: acloserlisten.Flow{}},
 		{
 			ID:  "seadex",
 			URL: seadex.PageURL,

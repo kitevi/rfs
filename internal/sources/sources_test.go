@@ -71,6 +71,7 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 		"film":                   true,
 		"seadex":                 true,
 		"one-piece":              true,
+		"acloserlisten":          true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -82,8 +83,8 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 5 {
-		t.Fatalf("len(sources.All()) = %d, want 5", len(all))
+	if len(all) != 6 {
+		t.Fatalf("len(sources.All()) = %d, want 6", len(all))
 	}
 }
 

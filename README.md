@@ -72,6 +72,19 @@ To verify live access and parsing without touching your database:
 RFS_TEST_ONEPIECE_LIVE=1 go test ./internal/sources/onepiece -run TestLive -v -count=1
 ```
 
+### A Closer Listen recommendations
+
+`/feeds/acloserlisten.xml` (or `.html`) publishes all currently embedded Bandcamp
+albums on the first successful poll, then only previously unseen album IDs.
+Returning albums and editorial changes do not create duplicates. Titles come
+from Bandcamp player metadata; links lead to the recommendations page.
+
+The source reads the public WordPress API rather than challenge-protected HTML.
+Metadata requests run sequentially and only for new albums. Any failed metadata
+request leaves the entire batch and checkpoint uncommitted for retry. No extra
+cache, credentials, database migration, or background worker is needed. The
+checkpoint retains album IDs across restarts; deleting the database resets it.
+
 ## Storage
 
 State is stored in a SQLite database under the OS user cache directory by default:

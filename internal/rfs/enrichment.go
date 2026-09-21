@@ -62,3 +62,63 @@ func (p Poller) enrichChanges(ctx context.Context, flow Flow, changes []Extracte
 	}
 	return changes, nil
 }
+
+// EnrichedAnnouncementFlow describes optional per-announcement metadata
+// queries. Unlike EnrichedChangeFlow, whose items share one batched request,
+// each announcement names its own resource, so rfs resolves them one at a
+// time. rfs performs the IO; the Flow constructs the URL and decodes the
+// response, and neither method performs IO of its own.
+type EnrichedAnnouncementFlow interface {
+	AnnouncementFlow
+
+	// AnnouncementEnrichmentURL returns the metadata URL for one unpublished
+	// announcement. An empty URL leaves that item as it is.
+	AnnouncementEnrichmentURL(ExtractedItem) (string, error)
+
+	// EnrichAnnouncement decodes one metadata response into the item to
+	// publish. It must keep the item's GUID: identity, not metadata, decides
+	// what has already been announced.
+	EnrichAnnouncement(Page, ExtractedItem) (ExtractedItem, error)
+}
+
+// enrichAnnouncements resolves metadata for newly announced items before they
+// are committed. Requests run sequentially, so a whole-page replacement cannot
+// burst at the upstream host, and any failure aborts the poll before the commit:
+// the checkpoint still lacks these items, so the next poll retries the batch
+// instead of publishing a partial one.
+func (p Poller) enrichAnnouncements(ctx context.Context, flow Flow, announcements []ExtractedItem) ([]ExtractedItem, error) {
+	enriched, ok := flow.(EnrichedAnnouncementFlow)
+	if !ok || len(announcements) == 0 {
+		return announcements, nil
+	}
+	resolved := make([]ExtractedItem, len(announcements))
+	for i, item := range announcements {
+		url, err := enriched.AnnouncementEnrichmentURL(item)
+		if err != nil {
+			return nil, err
+		}
+		if url == "" {
+			resolved[i] = item
+			continue
+		}
+		result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+		if err != nil {
+			return nil, err
+		}
+		if result.Status == FetchThrottled {
+			return nil, &fetchThrottle{result.RetryAfter}
+		}
+		if result.Status != FetchModified {
+			return nil, fmt.Errorf("announcement metadata unavailable (status %d)", result.Status)
+		}
+		item, err = enriched.EnrichAnnouncement(result.Page, item)
+		if err != nil {
+			return nil, err
+		}
+		if item.GUID != announcements[i].GUID {
+			return nil, fmt.Errorf("announcement metadata changed GUID %q to %q", announcements[i].GUID, item.GUID)
+		}
+		resolved[i] = item
+	}
+	return resolved, nil
+}
