@@ -6,6 +6,7 @@ import (
 
 	"github.com/kitevi/rfs/internal/sources"
 	"github.com/kitevi/rfs/internal/sources/film"
+	"github.com/kitevi/rfs/internal/sources/onepiece"
 	"github.com/kitevi/rfs/internal/sources/ptg"
 )
 
@@ -62,13 +63,14 @@ func TestAllIncludesFilmSource(t *testing.T) {
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
 // osmer-rain-trieste, ptv-remote-italy-jobs, and transport
 // (arriva-udine, trieste-trasporti, apt-gorizia, trenitalia-disruptions) Flows
-// were removed.
+// were removed, and the one-piece chapters Flow was added.
 func TestAllExcludesRemovedSources(t *testing.T) {
 	want := map[string]bool{
 		"meltzer-5-star-matches": true,
 		"ptg":                    true,
 		"film":                   true,
 		"seadex":                 true,
+		"one-piece":              true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -80,8 +82,33 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 4 {
-		t.Fatalf("len(sources.All()) = %d, want 4", len(all))
+	if len(all) != 5 {
+		t.Fatalf("len(sources.All()) = %d, want 5", len(all))
+	}
+}
+
+func TestAllIncludesOnePieceSource(t *testing.T) {
+	var found bool
+	for _, source := range sources.All() {
+		if source.ID != "one-piece" {
+			continue
+		}
+		found = true
+		if source.URL != onepiece.PageURL {
+			t.Fatalf("one-piece source URL = %q, want %q", source.URL, onepiece.PageURL)
+		}
+		if source.Meta.Link != onepiece.HumanURL {
+			t.Fatalf("one-piece source link = %q, want %q", source.Meta.Link, onepiece.HumanURL)
+		}
+		if source.Meta.Title == "" || source.Meta.Description == "" {
+			t.Fatal("one-piece source metadata is incomplete")
+		}
+		if source.Flow.Version() != onepiece.ExtractVersion {
+			t.Fatalf("one-piece source flow version = %d, want %d", source.Flow.Version(), onepiece.ExtractVersion)
+		}
+	}
+	if !found {
+		t.Fatal("sources.All does not include the one-piece source")
 	}
 }
 

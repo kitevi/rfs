@@ -111,6 +111,13 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		return pollFailure(err)
 	}
 
+	if announcement, ok := source.Flow.(AnnouncementFlow); ok {
+		if comparesChanges(source.Flow) {
+			return PollResult{}, fmt.Errorf("poll %s: flow cannot both announce and compare changes", source.ID)
+		}
+		return p.pollAnnouncements(ctx, source, announcement, extracted, savedCache)
+	}
+
 	if comparesChanges(source.Flow) {
 		return p.pollChanges(ctx, source, source.Flow, extracted, savedCache)
 	}
@@ -200,7 +207,13 @@ func (p Poller) extractObservation(ctx context.Context, source Source, first Pag
 // flowRequiresFullPage reports whether a Flow's observed state depends on pages
 // that a conditional answer for the collection cannot refresh.
 func flowRequiresFullPage(flow Flow) bool {
-	_, ok := flow.(PaginatedFlow)
+	if _, ok := flow.(PaginatedFlow); ok {
+		return true
+	}
+	// An announcement Flow compares a fresh observation against a durable
+	// checkpoint, so it always needs the collection bytes: a 304 re-derives
+	// nothing and would skip the comparison that initializes and advances it.
+	_, ok := flow.(AnnouncementFlow)
 	return ok
 }
 

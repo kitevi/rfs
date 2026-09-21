@@ -4,6 +4,7 @@ import (
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/meltzer"
+	"github.com/kitevi/rfs/internal/sources/onepiece"
 	"github.com/kitevi/rfs/internal/sources/ptg"
 	"github.com/kitevi/rfs/internal/sources/seadex"
 )
@@ -52,6 +53,16 @@ func All() []rfs.Source {
 			},
 			Flow:    film.Flow{},
 			History: rfs.DefaultCatalogHistory(),
+		},
+		{
+			ID:  "one-piece",
+			URL: onepiece.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "One Piece chapters",
+				Description: "New One Piece chapter releases from TCB Scans.",
+				Link:        onepiece.HumanURL,
+			},
+			Flow: onepiece.Flow{},
 		},
 	}
 }

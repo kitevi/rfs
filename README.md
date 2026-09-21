@@ -19,6 +19,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/film.html` — HTML view of the `/film/` feed
 - `/feeds/seadex.xml` — Discord-style SeaDex recommendation diffs
 - `/feeds/seadex.html` — HTML view of the SeaDex diffs
+- `/feeds/one-piece.xml` — new One Piece chapters from TCB Scans
+- `/feeds/one-piece.html` — HTML view of the One Piece chapters
 
 ### SeaDex
 
@@ -49,6 +51,26 @@ and reverted between polls cannot be recovered. Dates are observation times.
 The baseline and all emitted updates persist in SQLite across restarts; history
 is currently retained without automatic pruning. Extraction-version upgrades
 silently rebaseline rather than publishing code-induced changes.
+
+### One Piece chapters
+
+One Piece announces each chapter once. The first successful poll publishes only
+the newest chapter; after that, new chapters appear in order, including releases
+that appeared while TCB Scans was unreachable. Items are links only: rfs never
+fetches chapter pages or images, and it does not repair links that a publisher
+later breaks.
+
+The archive page lists every chapter back to chapter 1 and is fetched in full
+each poll. Failures, throttling, and unrecognized pages leave the checkpoint and
+the served feed untouched for retry on the next poll. Deduplication lives in the
+database: deleting it re-initializes the feed with the newest chapter. See
+`docs/adr/0010-announcement-checkpoints.md`.
+
+To verify live access and parsing without touching your database:
+
+```sh
+RFS_TEST_ONEPIECE_LIVE=1 go test ./internal/sources/onepiece -run TestLive -v -count=1
+```
 
 ## Storage
 

@@ -74,6 +74,10 @@ func (s *SQLiteStore) init(ctx context.Context) error {
 			last_modified TEXT NOT NULL DEFAULT '',
 			extract_version INTEGER NOT NULL DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS announcement_state (
+			source_id TEXT PRIMARY KEY,
+			checkpoint BLOB NOT NULL
+		)`,
 	}
 	for _, stmt := range statements {
 		if _, err := s.db.ExecContext(ctx, stmt); err != nil {
