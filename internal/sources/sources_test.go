@@ -4,8 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources"
 	"github.com/kitevi/rfs/internal/sources/film"
+	"github.com/kitevi/rfs/internal/sources/malstack"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
 	"github.com/kitevi/rfs/internal/sources/ptg"
 )
@@ -60,6 +62,46 @@ func TestAllIncludesFilmSource(t *testing.T) {
 	}
 }
 
+func TestAllIncludesMALStackSource(t *testing.T) {
+	var found bool
+	for _, source := range sources.All() {
+		if source.ID != "mal-stack-82158" {
+			continue
+		}
+		found = true
+		if source.URL != malstack.PageURL {
+			t.Fatalf("mal-stack source URL = %q, want %q", source.URL, malstack.PageURL)
+		}
+		if source.Meta.Link != malstack.HumanURL {
+			t.Fatalf("mal-stack source link = %q, want %q", source.Meta.Link, malstack.HumanURL)
+		}
+		if source.Meta.Title == "" || source.Meta.Description == "" {
+			t.Fatal("mal-stack source metadata is incomplete")
+		}
+		if !source.Meta.ItemDescriptionsHTML {
+			t.Fatal("mal-stack source must render its escaped note descriptions")
+		}
+		if source.Flow.Version() != malstack.ExtractVersion {
+			t.Fatalf("mal-stack flow version = %d, want %d", source.Flow.Version(), malstack.ExtractVersion)
+		}
+		if _, ok := source.Flow.(rfs.ChangeFlow); !ok {
+			t.Fatalf("mal-stack flow %T does not implement rfs.ChangeFlow", source.Flow)
+		}
+		if source.EmitInitial || source.EmitVersionChanges {
+			t.Fatal("mal-stack change feed must start from a silent baseline")
+		}
+		if source.History != nil {
+			t.Fatal("mal-stack change feed does not use catalog history")
+		}
+		if source.Interval != 0 {
+			t.Fatalf("mal-stack source interval = %s, want the default", source.Interval)
+		}
+	}
+	if !found {
+		t.Fatal("sources.All does not include the mal-stack source")
+	}
+}
+
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
 // osmer-rain-trieste, ptv-remote-italy-jobs, and transport
 // (arriva-udine, trieste-trasporti, apt-gorizia, trenitalia-disruptions) Flows
@@ -72,6 +114,7 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 		"seadex":                 true,
 		"one-piece":              true,
 		"acloserlisten":          true,
+		"mal-stack-82158":        true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -83,8 +126,8 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 6 {
-		t.Fatalf("len(sources.All()) = %d, want 6", len(all))
+	if len(all) != 7 {
+		t.Fatalf("len(sources.All()) = %d, want 7", len(all))
 	}
 }
 

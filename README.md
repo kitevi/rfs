@@ -21,6 +21,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/seadex.html` — HTML view of the SeaDex diffs
 - `/feeds/one-piece.xml` — new One Piece chapters from TCB Scans
 - `/feeds/one-piece.html` — HTML view of the One Piece chapters
+- `/feeds/mal-stack-82158.xml` — observed changes to a MyAnimeList Interest Stack
+- `/feeds/mal-stack-82158.html` — HTML view of the stack changes
 
 ### SeaDex
 
@@ -70,6 +72,33 @@ To verify live access and parsing without touching your database:
 
 ```sh
 RFS_TEST_ONEPIECE_LIVE=1 go test ./internal/sources/onepiece -run TestLive -v -count=1
+```
+
+### MyAnimeList Interest Stack 82158
+
+The `mal-stack-82158` source watches *New Anime IPs with Exceptional Production
+Value*. The first successful complete poll silently establishes a baseline.
+Later polls publish one item per affected anime: **Added**, **Removed**, or
+**Notes updated** with the changed span of the curator's notes as `-`/`+` lines.
+Membership changes are always published, even when notes are empty.
+
+Only membership and note text are compared. Reordering, titles, covers, scores,
+airing status, restack counts and the stack's own introduction are ignored. Note
+text is canonicalized so entity and whitespace-only differences produce no
+noise; link targets stay visible as inert text.
+
+This is an **observed-change feed**: edits made and reverted between polls cannot
+be recovered, and item dates are discovery times, not upstream edit times. An
+unrecognized, incomplete, or paginated page fails closed, so a temporary layout
+change or access block preserves the baseline and feed for retry instead of
+publishing false removals. Access blocks are reported, not bypassed. History is
+retained without automatic pruning, and extraction-version upgrades silently
+rebaseline rather than publishing code-induced changes.
+
+To verify live access and parsing without touching your database:
+
+```sh
+RFS_TEST_MALSTACK_LIVE=1 go test ./internal/sources/malstack -run TestLiveMALStack -v -count=1
 ```
 
 ### A Closer Listen recommendations

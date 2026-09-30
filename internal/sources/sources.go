@@ -4,6 +4,7 @@ import (
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources/acloserlisten"
 	"github.com/kitevi/rfs/internal/sources/film"
+	"github.com/kitevi/rfs/internal/sources/malstack"
 	"github.com/kitevi/rfs/internal/sources/meltzer"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
 	"github.com/kitevi/rfs/internal/sources/ptg"
@@ -67,6 +68,17 @@ func All() []rfs.Source {
 				Link:        onepiece.HumanURL,
 			},
 			Flow: onepiece.Flow{},
+		},
+		{
+			ID:  "mal-stack-82158",
+			URL: malstack.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:                "MyAnimeList: New Anime IPs with Exceptional Production Value",
+				Description:          "Observed additions, removals, and curator note edits to the Interest Stack.",
+				Link:                 malstack.HumanURL,
+				ItemDescriptionsHTML: true,
+			},
+			Flow: malstack.Flow{},
 		},
 	}
 }
