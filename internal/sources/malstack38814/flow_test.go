@@ -1,4 +1,4 @@
-package malstack_test
+package malstack38814_test
 
 import (
 	"encoding/json"
@@ -7,16 +7,16 @@ import (
 	"testing"
 
 	"github.com/kitevi/rfs/internal/rfs"
-	"github.com/kitevi/rfs/internal/sources/malstack"
+	"github.com/kitevi/rfs/internal/sources/malstack38814"
 )
 
 const stackPage = `<!doctype html>
 <html><head>
-<meta property="og:url" content="https://myanimelist.net/stacks/82158">
+<meta property="og:url" content="https://myanimelist.net/stacks/38814">
 <meta property="og:description" content="MyAnimeList - Interest Stacks - 1 Entries, 270 Restacks">
 </head><body>
 <div class="content-left stacks-detail">
-  <h2 class="title">New Anime IPs with Exceptional Production Value</h2>
+  <h2 class="title">The Next Sakuga Shows</h2>
   <div class="tag"><span class="tag-anime">Anime</span></div>
   <div class="list-anime-list">
     <div class="seasonal-anime js-seasonal-anime">
@@ -52,7 +52,7 @@ func stackHTML(count int, entries ...testEntry) string {
 	}
 	return `<!doctype html>
 <html><head>
-<meta property="og:url" content="https://myanimelist.net/stacks/82158">
+<meta property="og:url" content="https://myanimelist.net/stacks/38814">
 <meta property="og:description" content="MyAnimeList - Interest Stacks - ` + fmt.Sprint(count) + ` Entries, 270 Restacks">
 </head><body>
 <div class="content-left stacks-detail">
@@ -63,7 +63,7 @@ func stackHTML(count int, entries ...testEntry) string {
 
 func observations(t *testing.T, page string) []rfs.ExtractedItem {
 	t.Helper()
-	items, err := (malstack.Flow{}).Extract(rfs.Page(page))
+	items, err := (malstack38814.Flow{}).Extract(rfs.Page(page))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestChangesReportsAdditionsRemovalsAndNoteEdits(t *testing.T) {
 		testEntry{id: "60001", title: "Gamma", notes: ""},
 		testEntry{id: "59999", title: "Kept", notes: "Unchanged"},
 	))
-	changes, err := (malstack.Flow{}).Changes(before, after)
+	changes, err := (malstack38814.Flow{}).Changes(before, after)
 	if err != nil {
 		t.Fatalf("Changes: %v", err)
 	}
@@ -117,14 +117,14 @@ func TestChangesReportsAdditionsRemovalsAndNoteEdits(t *testing.T) {
 
 func TestChangesTreatsRecognizedEmptyCollectionAsRemovals(t *testing.T) {
 	before := observations(t, stackHTML(1, testEntry{id: "59878", title: "Alpha", notes: "Alpha note"}))
-	after, err := (malstack.Flow{}).Extract(rfs.Page(stackHTML(0)))
+	after, err := (malstack38814.Flow{}).Extract(rfs.Page(stackHTML(0)))
 	if err != nil {
 		t.Fatalf("an explicit zero-entry collection must be recognized: %v", err)
 	}
 	if len(after) != 0 {
 		t.Fatalf("expected no anime, got %d", len(after))
 	}
-	changes, err := (malstack.Flow{}).Changes(before, after)
+	changes, err := (malstack38814.Flow{}).Changes(before, after)
 	if err != nil {
 		t.Fatalf("Changes: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestChangesIgnoresUnchangedObservationsAndPresentationNoise(t *testing.T) {
 		testEntry{id: "60000", title: "Beta renamed", notes: "Beta note"},
 		testEntry{id: "59878", title: "Alpha", notes: "Same&nbsp;  note"},
 	))
-	changes, err := (malstack.Flow{}).Changes(before, after)
+	changes, err := (malstack38814.Flow{}).Changes(before, after)
 	if err != nil {
 		t.Fatalf("Changes: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestFlowStoresCanonicalNoteLines(t *testing.T) {
 	notes := `Line one.<br><br>  Line   two &amp; more. <a href="https://example.com/x">Trailer</a>` +
 		`<script>bad()</script><a href="javascript:evil()">skip</a>`
 	page := strings.Replace(stackPage, "First paragraph.<br><br>Second &amp; final.", notes, 1)
-	items, err := (malstack.Flow{}).Extract(rfs.Page(page))
+	items, err := (malstack38814.Flow{}).Extract(rfs.Page(page))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestFlowTakesEntryCountFromTrailingTotal(t *testing.T) {
 	page = strings.Replace(page,
 		`content="MyAnimeList - Interest Stacks - 2 Entries, 270 Restacks"`,
 		`content="Curator's picks: 12 Entries worth rewatching. MyAnimeList - Interest Stacks - 2 Entries, 270 Restacks"`, 1)
-	items, err := (malstack.Flow{}).Extract(rfs.Page(page))
+	items, err := (malstack38814.Flow{}).Extract(rfs.Page(page))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestFlowTakesEntryCountFromTrailingTotal(t *testing.T) {
 
 func TestFlowRejectsCardWithoutNotesWrapper(t *testing.T) {
 	page := strings.Replace(stackPage, `<div class="intro">First paragraph.<br><br>Second &amp; final.</div>`, "", 1)
-	if _, err := (malstack.Flow{}).Extract(rfs.Page(page)); err == nil {
+	if _, err := (malstack38814.Flow{}).Extract(rfs.Page(page)); err == nil {
 		t.Fatal("expected a card without a recognized notes wrapper to be rejected")
 	}
 }
@@ -214,8 +214,8 @@ func TestFlowRejectsIncompleteOrUnrecognizedPages(t *testing.T) {
 		name string
 		page string
 	}{
-		{"wrong stack", strings.Replace(stackPage, "stacks/82158", "stacks/99999", 1)},
-		{"other watched stack", strings.Replace(stackPage, "stacks/82158", "stacks/38814", 1)},
+		{"wrong stack", strings.Replace(stackPage, "stacks/38814", "stacks/99999", 1)},
+		{"other watched stack", strings.Replace(stackPage, "stacks/38814", "stacks/82158", 1)},
 		{"declared count mismatch", strings.Replace(stackPage, "1 Entries", "2 Entries", 1)},
 		{"missing anime list", strings.Replace(stackPage, `<div class="list-anime-list">`, "<div>", 1)},
 		{"missing stack detail", strings.Replace(stackPage, "content-left stacks-detail", "content-left", 1)},
@@ -223,7 +223,7 @@ func TestFlowRejectsIncompleteOrUnrecognizedPages(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := (malstack.Flow{}).Extract(rfs.Page(tc.page)); err == nil {
+			if _, err := (malstack38814.Flow{}).Extract(rfs.Page(tc.page)); err == nil {
 				t.Fatal("expected the page to be rejected, got a complete observation")
 			}
 		})
@@ -231,7 +231,7 @@ func TestFlowRejectsIncompleteOrUnrecognizedPages(t *testing.T) {
 }
 
 func TestFlowExtractsOnlyStackAnime(t *testing.T) {
-	items, err := (malstack.Flow{}).Extract(rfs.Page(stackPage))
+	items, err := (malstack38814.Flow{}).Extract(rfs.Page(stackPage))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}

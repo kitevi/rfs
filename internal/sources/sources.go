@@ -5,6 +5,7 @@ import (
 	"github.com/kitevi/rfs/internal/sources/acloserlisten"
 	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/malstack"
+	"github.com/kitevi/rfs/internal/sources/malstack38814"
 	"github.com/kitevi/rfs/internal/sources/meltzer"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
 	"github.com/kitevi/rfs/internal/sources/ptg"
@@ -79,6 +80,17 @@ func All() []rfs.Source {
 				ItemDescriptionsHTML: true,
 			},
 			Flow: malstack.Flow{},
+		},
+		{
+			ID:  "mal-stack-38814",
+			URL: malstack38814.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:                "MyAnimeList: The Next Sakuga Shows",
+				Description:          "Observed additions, removals, and curator note edits to the Interest Stack.",
+				Link:                 malstack38814.HumanURL,
+				ItemDescriptionsHTML: true,
+			},
+			Flow: malstack38814.Flow{},
 		},
 	}
 }

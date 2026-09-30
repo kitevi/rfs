@@ -23,6 +23,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/one-piece.html` — HTML view of the One Piece chapters
 - `/feeds/mal-stack-82158.xml` — observed changes to a MyAnimeList Interest Stack
 - `/feeds/mal-stack-82158.html` — HTML view of the stack changes
+- `/feeds/mal-stack-38814.xml` — observed changes to The Next Sakuga Shows stack
+- `/feeds/mal-stack-38814.html` — HTML view of the stack changes
 
 ### SeaDex
 
@@ -74,13 +76,17 @@ To verify live access and parsing without touching your database:
 RFS_TEST_ONEPIECE_LIVE=1 go test ./internal/sources/onepiece -run TestLive -v -count=1
 ```
 
-### MyAnimeList Interest Stack 82158
+### MyAnimeList Interest Stacks
 
-The `mal-stack-82158` source watches *New Anime IPs with Exceptional Production
-Value*. The first successful complete poll silently establishes a baseline.
-Later polls publish one item per affected anime: **Added**, **Removed**, or
-**Notes updated** with the changed span of the curator's notes as `-`/`+` lines.
-Membership changes are always published, even when notes are empty.
+- `mal-stack-82158` watches *New Anime IPs with Exceptional Production Value*.
+- `mal-stack-38814` watches *The Next Sakuga Shows*.
+
+Each source has its own baseline and feed. The first successful complete poll
+silently establishes a baseline. Later polls publish one item per affected
+anime: **Added**, **Removed**, or **Notes updated**, with the changed span of the
+curator's notes as `-`/`+` lines. Membership changes are always published, even
+when notes are empty. Anime with unknown release dates or episode counts are
+still tracked.
 
 Only membership and note text are compared. Reordering, titles, covers, scores,
 airing status, restack counts and the stack's own introduction are ignored. Note
@@ -99,6 +105,7 @@ To verify live access and parsing without touching your database:
 
 ```sh
 RFS_TEST_MALSTACK_LIVE=1 go test ./internal/sources/malstack -run TestLiveMALStack -v -count=1
+RFS_TEST_MALSTACK38814_LIVE=1 go test ./internal/sources/malstack38814 -run TestLiveMALStack -v -count=1
 ```
 
 ### A Closer Listen recommendations

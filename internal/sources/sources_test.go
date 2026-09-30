@@ -102,6 +102,34 @@ func TestAllIncludesMALStackSource(t *testing.T) {
 	}
 }
 
+func TestAllIncludesMALStack38814Source(t *testing.T) {
+	for _, source := range sources.All() {
+		if source.ID != "mal-stack-38814" {
+			continue
+		}
+		if source.URL != "https://myanimelist.net/stacks/38814" || source.Meta.Link != source.URL {
+			t.Fatalf("unexpected stack URLs: fetch=%q link=%q", source.URL, source.Meta.Link)
+		}
+		if source.Meta.Title != "MyAnimeList: The Next Sakuga Shows" {
+			t.Fatalf("unexpected stack title: %q", source.Meta.Title)
+		}
+		if source.Meta.Description == "" || !source.Meta.ItemDescriptionsHTML {
+			t.Fatal("stack metadata must describe the feed and enable escaped HTML notes")
+		}
+		if _, ok := source.Flow.(rfs.ChangeFlow); !ok {
+			t.Fatalf("stack flow %T does not implement rfs.ChangeFlow", source.Flow)
+		}
+		if source.Flow.Version() != 1 {
+			t.Fatalf("stack flow version = %d, want 1", source.Flow.Version())
+		}
+		if source.EmitInitial || source.EmitVersionChanges || source.History != nil || source.Interval != 0 {
+			t.Fatal("stack must use a silent baseline, change history, and the default interval")
+		}
+		return
+	}
+	t.Fatal("sources.All does not include the mal-stack-38814 source")
+}
+
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
 // osmer-rain-trieste, ptv-remote-italy-jobs, and transport
 // (arriva-udine, trieste-trasporti, apt-gorizia, trenitalia-disruptions) Flows
@@ -115,6 +143,7 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 		"one-piece":              true,
 		"acloserlisten":          true,
 		"mal-stack-82158":        true,
+		"mal-stack-38814":        true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -126,8 +155,8 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 7 {
-		t.Fatalf("len(sources.All()) = %d, want 7", len(all))
+	if len(all) != 8 {
+		t.Fatalf("len(sources.All()) = %d, want 8", len(all))
 	}
 }
 
