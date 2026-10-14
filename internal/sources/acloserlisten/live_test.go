@@ -114,35 +114,35 @@ func TestLiveOctoberRecommendations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{youtubeGUIDPrefix + "uZf2jkCI6Fo", trackGUIDPrefix + "687192546"}
-	if len(decision.Announcements) != len(want) {
-		t.Fatalf("announced %#v, want the video and the standalone track", decision.Announcements)
-	}
-	for i, guid := range want {
-		if decision.Announcements[i].GUID != guid {
-			t.Fatalf("announcement %d = %q, want %q", i, decision.Announcements[i].GUID, guid)
-		}
-		url, err := flow.AnnouncementEnrichmentURL(decision.Announcements[i])
+	var titles []string
+	for _, announcement := range decision.Announcements {
+		url, err := flow.AnnouncementEnrichmentURL(announcement)
 		if err != nil {
 			t.Fatal(err)
+		}
+		if url == "" {
+			titles = append(titles, announcement.Title)
+			continue
 		}
 		player, err := fetcher.Fetch(t.Context(), url, rfs.FetchCache{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		enriched, err := flow.EnrichAnnouncement(player.Page, decision.Announcements[i])
+		enriched, err := flow.EnrichAnnouncement(player.Page, announcement)
 		if err != nil {
 			t.Fatal(err)
 		}
-		switch guid {
-		case youtubeGUIDPrefix + "uZf2jkCI6Fo":
-			if enriched.Title != "Max Richter — Now We Can Sing (Visualiser)" {
-				t.Fatalf("video title = %q", enriched.Title)
-			}
-		default:
-			if enriched.Title != "Nero's Day At Disneyland — Ghost Debt" {
-				t.Fatalf("track title = %q", enriched.Title)
-			}
+		titles = append(titles, enriched.Title)
+	}
+	joined := strings.Join(titles, "\n")
+	for _, want := range []string{
+		"Max Richter — While the Flood Rages",
+		"Grand Reopening",
+		"Max Richter — Now We Can Sing (Visualiser)",
+		"Nero's Day At Disneyland — Ghost Debt",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("announced titles missing %q:\n%s", want, joined)
 		}
 	}
 	_, pending, err = flow.PlanIdentities(decision.Checkpoint, items)

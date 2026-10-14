@@ -403,17 +403,28 @@ func TestExtractOctoberPageKeepsTheTrackAndTheAlbum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 3 {
-		t.Fatalf("got %#v, want the video, the track, and the album", items)
+	if len(items) != 5 {
+		t.Fatalf("got %#v, want the two named albums, the video, the track, and the album", items)
 	}
-	if items[0].GUID != youtubeGUIDPrefix+"uZf2jkCI6Fo" {
-		t.Fatalf("video item = %#v", items[0])
+	if items[0].Title != "Max Richter — While the Flood Rages" {
+		t.Fatalf("first title = %q", items[0].Title)
 	}
-	if items[1].GUID != trackGUIDPrefix+"687192546" || items[1].Description != "" {
-		t.Fatalf("track item = %#v", items[1])
+	if !strings.Contains(items[1].Title, "Grand Reopening") || strings.Contains(items[1].Title, ",") {
+		t.Fatalf("second title = %q", items[1].Title)
 	}
-	if items[2].GUID != guidPrefix+"4925039" || items[2].Description != "" {
-		t.Fatalf("album item = %#v", items[2])
+	if items[2].GUID != youtubeGUIDPrefix+"uZf2jkCI6Fo" {
+		t.Fatalf("video item = %#v", items[2])
+	}
+	if items[3].GUID != trackGUIDPrefix+"687192546" || items[3].Description != "" {
+		t.Fatalf("track item = %#v", items[3])
+	}
+	if items[4].GUID != guidPrefix+"4925039" || items[4].Description != "" {
+		t.Fatalf("album item = %#v", items[4])
+	}
+	for _, item := range items {
+		if strings.Contains(item.Title, "MaddAddam") || strings.Contains(item.Title, "Closer Listen") {
+			t.Fatalf("prose that is not an album became an item: %+v", item)
+		}
 	}
 	trace := items[0].Debug
 	for _, want := range []string{
@@ -426,6 +437,8 @@ func TestExtractOctoberPageKeepsTheTrackAndTheAlbum(t *testing.T) {
 		"H4 bold text without a genre break: Max Richter",
 		"H4 bold text without a genre break: Nero",
 		"H4 bold text without a genre break: Caspian",
+		"H6 named album: Max Richter — While the Flood Rages",
+		"H6 named album: Nero",
 	} {
 		if !strings.Contains(trace, want) {
 			t.Fatalf("trace missing %q:\n%s", want, trace)
@@ -437,7 +450,8 @@ func TestExtractOctoberPageKeepsTheTrackAndTheAlbum(t *testing.T) {
 // YouTube video, a standalone track, and one album.
 func octoberPage(t *testing.T) rfs.Page {
 	t.Helper()
-	content := `<p><strong>Max Richter</strong> returns. <strong>Nero&#8217;s Day at Disneyland</strong> offers Grand Reopening. <strong>Caspian</strong> returns.</p>` +
+	content := `<p><em>A</em> <em>Closer Listen</em> tends to be positive.</p>` +
+		`<p><strong>Max Richter</strong> makes a triumphant return with <em>While the Flood Rages</em> on Decca. inspired by Margaret Atwood&#8217;s <em>MaddAddam</em> trilogy. <strong>Nero&#8217;s Day at Disneyland</strong> offers the stunning <em>Grand Reopening,</em> an apt title. And <strong>Caspian</strong> returns with a self-titled album.</p>` +
 		`<iframe class="youtube-player" src="https://www.youtube.com/embed/uZf2jkCI6Fo?version=3&#038;rel=1"></iframe>` +
 		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/track=687192546/size=large/bgcol=333333/linkcol=ffffff/tracklist=false/artwork=small/"></iframe>` +
 		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/album=4925039/size=large/bgcol=333333/linkcol=ffffff/tracklist=false/artwork=small/"></iframe>`

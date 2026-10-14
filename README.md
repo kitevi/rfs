@@ -115,7 +115,8 @@ The first successful poll announces every release on the page. Later polls
 announce only releases that have not been announced before. An album player is
 that album. A track player that belongs to an album is that same album. A track
 with no album is announced once, as the track. A YouTube embed is announced
-once, as that video. Other players are ignored. Returning releases and
+once, as that video. A bold artist followed by an italic title is announced
+once, as that album. Other players are ignored. Returning releases and
 editorial changes do not create duplicates.
 Titles come from Bandcamp player metadata; links lead to the recommendations
 page.

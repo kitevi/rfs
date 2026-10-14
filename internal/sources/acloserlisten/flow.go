@@ -4,10 +4,9 @@
 // The usual revision is genre sections of Bandcamp album players. A revision
 // may also embed a single track. An album player, and a track player that
 // belongs to an album, are that album. A track with no album is its own
-// release. A YouTube embed is that video. Other players are not releases.
-// Identity comes from
-// the player, so editorial rewording can neither duplicate nor rename a
-// published item.
+// release. A YouTube embed is that video. A bold artist followed by an italic
+// title is that album, so a name written in the lede is announced even when
+// the player under it is a different recording. Other players are not releases.
 package acloserlisten
 
 import (
@@ -17,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"golang.org/x/net/html"
 
@@ -39,9 +39,10 @@ const (
 
 	// ExtractVersion is the derivation version for this Flow. Bump it whenever
 	// Extract's output can change for a fixed page. Version 2 also extracts
-	// track players. Version 3 also extracts YouTube embeds. Album-only pages
-	// still produce the same items.
-	ExtractVersion = 3
+	// track players. Version 3 also extracts YouTube embeds. Version 4 also
+	// extracts bold-artist, italic-title album names. Album-only pages still
+	// produce the same items.
+	ExtractVersion = 4
 
 	// CheckpointVersion is the announcement checkpoint schema version. Track
 	// resolutions are an optional field on version 1 so an existing checkpoint
@@ -67,6 +68,14 @@ const (
 	// youtubeCheckpointPrefix marks a YouTube video in the announced set.
 	youtubeCheckpointPrefix = "youtube:"
 
+	// namedGUIDPrefix is the identity of an album written as a bold artist and
+	// an italic title. The slug is lowercase letters and digits, artist and
+	// title separated by a colon.
+	namedGUIDPrefix = "acloserlisten:named:"
+
+	// namedCheckpointPrefix marks a prose album in the announced set.
+	namedCheckpointPrefix = "named:"
+
 	// playerURLSuffix is the player size this Flow requests. The page's own
 	// iframe src is never fetched verbatim.
 	playerURLSuffix = "/size=large/artwork=small/"
@@ -87,6 +96,7 @@ const (
 	releaseAlbum releaseKind = iota
 	releaseTrack
 	releaseYouTube
+	releaseNamed
 )
 
 // release is one Bandcamp player identity derived from an iframe URL.
@@ -101,6 +111,8 @@ func (r release) guid() string {
 		return trackGUIDPrefix + r.id
 	case releaseYouTube:
 		return youtubeGUIDPrefix + r.id
+	case releaseNamed:
+		return namedGUIDPrefix + r.id
 	default:
 		return guidPrefix + r.id
 	}
@@ -114,6 +126,8 @@ func (r release) checkpointKey() string {
 		return trackCheckpointPrefix + r.id
 	case releaseYouTube:
 		return youtubeCheckpointPrefix + r.id
+	case releaseNamed:
+		return namedCheckpointPrefix + r.id
 	default:
 		return r.id
 	}
@@ -125,6 +139,8 @@ func (r release) playerURL() string {
 		return "https://bandcamp.com/EmbeddedPlayer/v=2/track=" + r.id + playerURLSuffix
 	case releaseYouTube:
 		return "https://www.youtube.com/oembed?format=json&url=" + url.QueryEscape("https://www.youtube.com/watch?v="+r.id)
+	case releaseNamed:
+		return ""
 	default:
 		return "https://bandcamp.com/EmbeddedPlayer/v=2/album=" + r.id + playerURLSuffix
 	}
@@ -167,6 +183,7 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 	for _, embedded := range found {
 		items = append(items, rfs.ExtractedItem{
 			GUID:        embedded.release.guid(),
+			Title:       embedded.title,
 			Link:        HumanURL,
 			Description: description(embedded.genre),
 		})
@@ -175,10 +192,12 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 	return items, nil
 }
 
-// embedded is one player from the page, in document order.
+// embedded is one release from the page, in document order. title is set for
+// an album named in the prose; player releases get their title later.
 type embedded struct {
 	release release
 	genre   string
+	title   string
 }
 
 // embeddedReleases walks the content in document order, tracking the most
@@ -189,6 +208,8 @@ func embeddedReleases(doc *html.Node) []embedded {
 	var found []embedded
 	seen := map[string]bool{}
 	genre := ""
+	var artist string
+	titled := false
 	var walk func(*html.Node)
 	walk = func(node *html.Node) {
 		if node.Type == html.ElementNode {
@@ -196,12 +217,36 @@ func embeddedReleases(doc *html.Node) []embedded {
 			case "strong":
 				if label := genreLabel(node); label != "" {
 					genre = label
+					artist = ""
+					titled = false
+					return
 				}
+				if name := cleanName(proseName(node)); name != "" {
+					artist = name
+					titled = false
+				}
+				return
+			case "em":
+				if artist != "" && !titled {
+					title := cleanName(textOf(node))
+					if title != "" {
+						titled = true
+						if slug, ok := proseSlug(artist, title); ok {
+							rel := release{kind: releaseNamed, id: slug}
+							if !seen[rel.guid()] {
+								seen[rel.guid()] = true
+								found = append(found, embedded{release: rel, genre: genre, title: artist + " — " + title})
+							}
+						}
+					}
+				}
+				return
 			case "iframe":
 				if rel, ok := embeddedRelease(attr(node, "src")); ok && !seen[rel.guid()] {
 					seen[rel.guid()] = true
 					found = append(found, embedded{release: rel, genre: genre})
 				}
+				return
 			}
 		}
 		for child := node.FirstChild; child != nil; child = child.NextSibling {
@@ -256,6 +301,11 @@ func observationTrace(doc *html.Node) string {
 	for _, line := range lines {
 		b.WriteString(line)
 		b.WriteByte('\n')
+	}
+	for _, item := range embeddedReleases(doc) {
+		if item.title != "" {
+			b.WriteString("H6 named album: " + item.title + "\n")
+		}
 	}
 	return b.String()
 }
@@ -416,6 +466,52 @@ func youtubeVideoID(parsed *url.URL) (string, bool) {
 		return "", false
 	}
 	return rest, true
+}
+
+func proseSlug(artist, title string) (string, bool) {
+	artistSlug, titleSlug := nameSlug(artist), nameSlug(title)
+	slug := artistSlug + ":" + titleSlug
+	if !validNameSlug(slug) {
+		return "", false
+	}
+	return slug, true
+}
+
+func nameSlug(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func validNameSlug(slug string) bool {
+	artist, title, ok := strings.Cut(slug, ":")
+	if !ok || artist == "" || title == "" || strings.Contains(title, ":") {
+		return false
+	}
+	return nameSlug(artist) == artist && nameSlug(title) == title
+}
+
+func cleanName(text string) string {
+	return strings.Trim(strings.TrimSpace(text), " ,;:.")
+}
+
+func textOf(node *html.Node) string {
+	var b strings.Builder
+	var walk func(*html.Node)
+	walk = func(n *html.Node) {
+		if n.Type == html.TextNode {
+			b.WriteString(n.Data)
+		}
+		for child := n.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(node)
+	return b.String()
 }
 
 func validYouTubeID(id string) bool {
@@ -579,6 +675,12 @@ func observedReleases(items []rfs.ExtractedItem) ([]observed, error) {
 
 // itemRelease recovers the release Extract embedded in an item GUID.
 func itemRelease(guid string) (release, error) {
+	if raw, ok := strings.CutPrefix(guid, namedGUIDPrefix); ok {
+		if !validNameSlug(raw) {
+			return release{}, fmt.Errorf("acloserlisten: unexpected item GUID %q", guid)
+		}
+		return release{kind: releaseNamed, id: raw}, nil
+	}
 	if raw, ok := strings.CutPrefix(guid, youtubeGUIDPrefix); ok {
 		if !validYouTubeID(raw) {
 			return release{}, fmt.Errorf("acloserlisten: unexpected item GUID %q", guid)
@@ -604,6 +706,12 @@ func itemRelease(guid string) (release, error) {
 }
 
 func releaseFromCheckpointKey(key string) (release, error) {
+	if raw, ok := strings.CutPrefix(key, namedCheckpointPrefix); ok {
+		if !validNameSlug(raw) {
+			return release{}, fmt.Errorf("acloserlisten: unexpected checkpoint entry %q", key)
+		}
+		return release{kind: releaseNamed, id: raw}, nil
+	}
 	if raw, ok := strings.CutPrefix(key, youtubeCheckpointPrefix); ok {
 		if !validYouTubeID(raw) {
 			return release{}, fmt.Errorf("acloserlisten: unexpected checkpoint entry %q", key)
