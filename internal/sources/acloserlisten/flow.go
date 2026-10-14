@@ -150,6 +150,7 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 			Description: description(embedded.genre),
 		})
 	}
+	items[0].Debug = observationTrace(doc)
 	return items, nil
 }
 
@@ -188,6 +189,113 @@ func embeddedReleases(doc *html.Node) []embedded {
 	}
 	walk(doc)
 	return found
+}
+
+// observationTrace records every iframe and every bold prose name in document
+// order. Genre headings are bold text followed by a line break, so they are
+// not listed as names. The HTML feed shows this text; RSS does not.
+func observationTrace(doc *html.Node) string {
+	var lines []string
+	albums, tracks, skipped := 0, 0, 0
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if node.Type == html.ElementNode {
+			switch node.Data {
+			case "iframe":
+				src := oneLine(attr(node, "src"))
+				if rel, ok := embeddedRelease(src); ok {
+					kind := "album"
+					hypothesis := "H3"
+					if rel.kind == releaseTrack {
+						kind = "track"
+						hypothesis = "H2"
+						tracks++
+					} else {
+						albums++
+					}
+					lines = append(lines, fmt.Sprintf("%s kept iframe: bandcamp %s %s\nsrc: %s", hypothesis, kind, rel.id, src))
+				} else {
+					skipped++
+					lines = append(lines, "H1 skipped iframe: not a Bandcamp album or track player\nsrc: "+src)
+				}
+			case "strong":
+				if label := proseName(node); label != "" {
+					lines = append(lines, "H4 bold text without a genre break: "+label)
+				}
+			}
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(doc)
+	var b strings.Builder
+	fmt.Fprintf(&b, "kept albums: %d\nkept tracks: %d\nskipped iframes: %d\n", albums, tracks, skipped)
+	for _, line := range lines {
+		b.WriteString(line)
+		b.WriteByte('\n')
+	}
+	return b.String()
+}
+
+// proseName is a bold run that does not introduce a genre section. The fall
+// page bolds artist names in the lede; those names are not recommendations
+// on their own.
+func proseName(strong *html.Node) string {
+	if genreLabel(strong) != "" {
+		return ""
+	}
+	var label strings.Builder
+	var walk func(*html.Node)
+	walk = func(node *html.Node) {
+		if node.Type == html.TextNode {
+			label.WriteString(node.Data)
+		}
+		for child := node.FirstChild; child != nil; child = child.NextSibling {
+			walk(child)
+		}
+	}
+	walk(strong)
+	return strings.TrimSpace(label.String())
+}
+
+func oneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
+}
+
+// decisionTrace joins the per-item observation with this poll's announcement
+// decision. prior keys were already in the checkpoint.
+func decisionTrace(items []rfs.ExtractedItem, prior []string, announcements []rfs.ExtractedItem) string {
+	var b strings.Builder
+	for _, item := range items {
+		if item.Debug == "" {
+			continue
+		}
+		b.WriteString(item.Debug)
+		if !strings.HasSuffix(item.Debug, "\n") {
+			b.WriteByte('\n')
+		}
+	}
+	b.WriteString("H5 new:")
+	if len(announcements) == 0 {
+		b.WriteString(" (none)")
+	} else {
+		for _, item := range announcements {
+			b.WriteByte(' ')
+			b.WriteString(item.GUID)
+		}
+	}
+	b.WriteString("\nH5 already:")
+	if len(prior) == 0 {
+		b.WriteString(" (none)")
+	} else {
+		for _, key := range prior {
+			b.WriteByte(' ')
+			b.WriteString(key)
+		}
+	}
+	b.WriteByte('\n')
+	return b.String()
 }
 
 // genreLabel reports the section a bold lead-in introduces. Sections are
@@ -300,6 +408,10 @@ type checkpoint struct {
 	Version   int               `json:"version"`
 	Announced []string          `json:"announced"`
 	Tracks    map[string]string `json:"tracks,omitempty"`
+	// Trace is the latest observation, rendered on the HTML feed and omitted
+	// from RSS. It records which embeds were kept, which were skipped, and
+	// which releases were already announced.
+	Trace string `json:"trace,omitempty"`
 }
 
 // identityNote is carried on an item from ResolveIdentity to Evaluate, then
@@ -357,6 +469,7 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
 	}
+	prior := announcedIDs(announced)
 	var announcements []rfs.ExtractedItem
 	for _, candidate := range observed {
 		if announced[candidate.release.checkpointKey()] {
@@ -369,6 +482,7 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 		Version:   CheckpointVersion,
 		Announced: announcedIDs(announced),
 		Tracks:    tracksOrNil(tracks),
+		Trace:     decisionTrace(current, prior, announcements),
 	})
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
@@ -607,6 +721,16 @@ func (Flow) ResolveIdentity(page rfs.Page, item rfs.ExtractedItem) (rfs.Extracte
 		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: encode identity note: %w", err)
 	}
 	item.Metadata = string(note)
+	trackArtist, trackTitle, _ := trackFields(meta, rel.id)
+	artist := strings.TrimSpace(textValue(meta.Artist))
+	if artist == "" {
+		artist = trackArtist
+	}
+	albumLabel := "none"
+	if albumID > 0 {
+		albumLabel = strconv.FormatInt(albumID, 10)
+	}
+	item.Debug += fmt.Sprintf("H2 resolved track %s: album_id=%s artist=%q track=%q guid=%s\n", rel.id, albumLabel, artist, trackTitle, item.GUID)
 	return item, nil
 }
 

@@ -114,7 +114,10 @@ type ExtractedItem struct {
 	Description string
 	// Metadata is opaque, versioned flow data, separate from rendered text.
 	Metadata string
-	PubDate  *time.Time
+	// Debug is observation text for the HTML feed. It is not stored on an
+	// announced item and it is not part of the RSS entry.
+	Debug   string
+	PubDate *time.Time
 	// Replies is the catalog reply count for maturity filtering. Flows that
 	// do not observe one leave it zero (treated as immature while live).
 	Replies int

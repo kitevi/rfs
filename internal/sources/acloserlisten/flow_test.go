@@ -99,6 +99,9 @@ func TestExtractAnnouncesEmbeddedAlbumsInDocumentOrder(t *testing.T) {
 			t.Fatalf("item %d description = %q, want %q", i, items[i].Description, expected.description)
 		}
 	}
+	if strings.Contains(items[0].Debug, "H4 ") {
+		t.Fatalf("genre heading was reported as prose:\n%s", items[0].Debug)
+	}
 }
 
 func TestExtractDeduplicatesRepeatedEmbeds(t *testing.T) {
@@ -386,6 +389,21 @@ func TestExtractOctoberPageKeepsTheTrackAndTheAlbum(t *testing.T) {
 	if items[1].GUID != guidPrefix+"4925039" || items[1].Description != "" {
 		t.Fatalf("album item = %#v", items[1])
 	}
+	trace := items[0].Debug
+	for _, want := range []string{
+		"skipped iframes: 1",
+		"H1 skipped iframe: not a Bandcamp album or track player",
+		"youtube.com/embed/uZf2jkCI6Fo",
+		"H2 kept iframe: bandcamp track 687192546",
+		"H3 kept iframe: bandcamp album 4925039",
+		"H4 bold text without a genre break: Max Richter",
+		"H4 bold text without a genre break: Nero",
+		"H4 bold text without a genre break: Caspian",
+	} {
+		if !strings.Contains(trace, want) {
+			t.Fatalf("trace missing %q:\n%s", want, trace)
+		}
+	}
 }
 
 // octoberPage is the fall revision that names three releases and embeds a
@@ -552,6 +570,26 @@ func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testin
 	}
 	if _, ok := stored[trackGUIDPrefix+"8"]; ok {
 		t.Fatal("a track from an announced album was published again")
+	}
+	raw, err := store.LoadAnnouncementCheckpoint(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var traced checkpoint
+	if err := json.Unmarshal(raw, &traced); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"H1 skipped iframe",
+		"youtube.com",
+		"H2 resolved track 9: album_id=none",
+		`track="Ghost Debt"`,
+		"H2 resolved track 8: album_id=2",
+		"H5 new: " + trackGUIDPrefix + "9",
+	} {
+		if !strings.Contains(traced.Trace, want) {
+			t.Fatalf("trace missing %q:\n%s", want, traced.Trace)
+		}
 	}
 	hits := map[string]int{}
 	for url, count := range fetcher.hits {
