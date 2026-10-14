@@ -352,6 +352,29 @@ func TestEnrichAnnouncementRejectsUnusablePlayers(t *testing.T) {
 	}
 }
 
+func TestEnrichAnnouncementTitlesTheYouTubeVideo(t *testing.T) {
+	flow := Flow{}
+	item := rfs.ExtractedItem{GUID: youtubeGUIDPrefix + "uZf2jkCI6Fo", Link: HumanURL}
+	page := rfs.Page(`{"title":"Max Richter - Now We Can Sing (Visualiser)","author_name":"Max Richter"}`)
+	enriched, err := flow.EnrichAnnouncement(page, item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enriched.Title != "Max Richter — Now We Can Sing (Visualiser)" {
+		t.Fatalf("title = %q", enriched.Title)
+	}
+	if enriched.GUID != item.GUID {
+		t.Fatalf("guid = %q", enriched.GUID)
+	}
+	url, err := flow.AnnouncementEnrichmentURL(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if url != "https://www.youtube.com/oembed?format=json&url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DuZf2jkCI6Fo" {
+		t.Fatalf("enrichment URL = %q", url)
+	}
+}
+
 func TestExtractKeepsTrackPlayersAndLeavesAlbumURLsAsAlbums(t *testing.T) {
 	content := section("Ambient", 1) +
 		trackEmbed(9) +
@@ -361,7 +384,7 @@ func TestExtractKeepsTrackPlayersAndLeavesAlbumURLsAsAlbums(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{guidPrefix + "1", trackGUIDPrefix + "9", guidPrefix + "5"}
+	want := []string{guidPrefix + "1", trackGUIDPrefix + "9", guidPrefix + "5", youtubeGUIDPrefix + "uZf2jkCI6Fo"}
 	if len(items) != len(want) {
 		t.Fatalf("got %#v, want %v", items, want)
 	}
@@ -380,19 +403,23 @@ func TestExtractOctoberPageKeepsTheTrackAndTheAlbum(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) != 2 {
-		t.Fatalf("got %#v, want the track and the album", items)
+	if len(items) != 3 {
+		t.Fatalf("got %#v, want the video, the track, and the album", items)
 	}
-	if items[0].GUID != trackGUIDPrefix+"687192546" || items[0].Description != "" {
-		t.Fatalf("track item = %#v", items[0])
+	if items[0].GUID != youtubeGUIDPrefix+"uZf2jkCI6Fo" {
+		t.Fatalf("video item = %#v", items[0])
 	}
-	if items[1].GUID != guidPrefix+"4925039" || items[1].Description != "" {
-		t.Fatalf("album item = %#v", items[1])
+	if items[1].GUID != trackGUIDPrefix+"687192546" || items[1].Description != "" {
+		t.Fatalf("track item = %#v", items[1])
+	}
+	if items[2].GUID != guidPrefix+"4925039" || items[2].Description != "" {
+		t.Fatalf("album item = %#v", items[2])
 	}
 	trace := items[0].Debug
 	for _, want := range []string{
-		"skipped iframes: 1",
-		"H1 skipped iframe: not a Bandcamp album or track player",
+		"kept youtube: 1",
+		"skipped iframes: 0",
+		"H1 kept iframe: youtube uZf2jkCI6Fo",
 		"youtube.com/embed/uZf2jkCI6Fo",
 		"H2 kept iframe: bandcamp track 687192546",
 		"H3 kept iframe: bandcamp album 4925039",
@@ -542,6 +569,12 @@ func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testin
 	}
 	fetcher.pages[trackURL] = trackPlayerPage(t, 9, "Nero's Day At Disneyland", "Ghost Debt", 0, "")
 	fetcher.pages[albumTrackURL] = trackPlayerPage(t, 8, "Caspian", "Hiraeth", 2, "Caspian")
+	video := rfs.ExtractedItem{GUID: youtubeGUIDPrefix + "uZf2jkCI6Fo"}
+	videoURL, err := flow.AnnouncementEnrichmentURL(video)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetcher.pages[videoURL] = rfs.Page(`{"title":"Max Richter - Now We Can Sing (Visualiser)","author_name":"Max Richter"}`)
 	source := rfs.Source{ID: "acloserlisten", URL: PageURL, Flow: flow}
 	poller := rfs.Poller{Fetcher: fetcher, Store: store}
 
@@ -561,8 +594,11 @@ func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testin
 		t.Fatal(err)
 	}
 	stored := loadFeed(t, store)
-	if len(stored) != 3 {
-		t.Fatalf("stored %#v, want the two albums and the standalone track", stored)
+	if len(stored) != 4 {
+		t.Fatalf("stored %#v, want the two albums, the video, and the standalone track", stored)
+	}
+	if stored[youtubeGUIDPrefix+"uZf2jkCI6Fo"].Title != "Max Richter — Now We Can Sing (Visualiser)" {
+		t.Fatalf("video = %#v", stored[youtubeGUIDPrefix+"uZf2jkCI6Fo"])
 	}
 	got := stored[trackGUIDPrefix+"9"]
 	if got.Title != "Nero's Day At Disneyland — Ghost Debt" || got.Metadata != "" {
@@ -580,12 +616,12 @@ func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testin
 		t.Fatal(err)
 	}
 	for _, want := range []string{
-		"H1 skipped iframe",
+		"H1 kept iframe: youtube uZf2jkCI6Fo",
 		"youtube.com",
 		"H2 resolved track 9: album_id=none",
 		`track="Ghost Debt"`,
 		"H2 resolved track 8: album_id=2",
-		"H5 new: " + trackGUIDPrefix + "9",
+		"H5 new: " + youtubeGUIDPrefix + "uZf2jkCI6Fo " + trackGUIDPrefix + "9",
 	} {
 		if !strings.Contains(traced.Trace, want) {
 			t.Fatalf("trace missing %q:\n%s", want, traced.Trace)
@@ -601,7 +637,10 @@ func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testin
 	if fetcher.hits[trackURL] != hits[trackURL] || fetcher.hits[albumTrackURL] != hits[albumTrackURL] {
 		t.Fatalf("resolved players were fetched again: before %v after %v", hits, fetcher.hits)
 	}
-	if len(loadFeed(t, store)) != 3 {
+	if fetcher.hits[videoURL] != hits[videoURL] {
+		t.Fatalf("youtube metadata was fetched again: before %v after %v", hits, fetcher.hits)
+	}
+	if len(loadFeed(t, store)) != 4 {
 		t.Fatal("repeat poll changed the feed")
 	}
 }

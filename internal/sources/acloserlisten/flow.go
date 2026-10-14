@@ -4,7 +4,8 @@
 // The usual revision is genre sections of Bandcamp album players. A revision
 // may also embed a single track. An album player, and a track player that
 // belongs to an album, are that album. A track with no album is its own
-// release. YouTube and other players are not releases. Identity comes from
+// release. A YouTube embed is that video. Other players are not releases.
+// Identity comes from
 // the player, so editorial rewording can neither duplicate nor rename a
 // published item.
 package acloserlisten
@@ -38,8 +39,9 @@ const (
 
 	// ExtractVersion is the derivation version for this Flow. Bump it whenever
 	// Extract's output can change for a fixed page. Version 2 also extracts
-	// track players; album-only pages still produce the same items.
-	ExtractVersion = 2
+	// track players. Version 3 also extracts YouTube embeds. Album-only pages
+	// still produce the same items.
+	ExtractVersion = 3
 
 	// CheckpointVersion is the announcement checkpoint schema version. Track
 	// resolutions are an optional field on version 1 so an existing checkpoint
@@ -57,6 +59,13 @@ const (
 	// trackCheckpointPrefix marks a standalone track in the announced set.
 	// Bare numbers remain album IDs, which is what version-1 checkpoints store.
 	trackCheckpointPrefix = "track:"
+
+	// youtubeGUIDPrefix is the identity of an embedded YouTube video. It does
+	// not share the Bandcamp album or track namespace.
+	youtubeGUIDPrefix = "acloserlisten:youtube:"
+
+	// youtubeCheckpointPrefix marks a YouTube video in the announced set.
+	youtubeCheckpointPrefix = "youtube:"
 
 	// playerURLSuffix is the player size this Flow requests. The page's own
 	// iframe src is never fetched verbatim.
@@ -77,6 +86,7 @@ type releaseKind uint8
 const (
 	releaseAlbum releaseKind = iota
 	releaseTrack
+	releaseYouTube
 )
 
 // release is one Bandcamp player identity derived from an iframe URL.
@@ -86,27 +96,38 @@ type release struct {
 }
 
 func (r release) guid() string {
-	if r.kind == releaseTrack {
+	switch r.kind {
+	case releaseTrack:
 		return trackGUIDPrefix + r.id
+	case releaseYouTube:
+		return youtubeGUIDPrefix + r.id
+	default:
+		return guidPrefix + r.id
 	}
-	return guidPrefix + r.id
 }
 
 // checkpointKey is the form stored in the announced set. Album keys stay bare
 // numbers so a checkpoint written before track support still matches.
 func (r release) checkpointKey() string {
-	if r.kind == releaseTrack {
+	switch r.kind {
+	case releaseTrack:
 		return trackCheckpointPrefix + r.id
+	case releaseYouTube:
+		return youtubeCheckpointPrefix + r.id
+	default:
+		return r.id
 	}
-	return r.id
 }
 
 func (r release) playerURL() string {
-	kind := "album="
-	if r.kind == releaseTrack {
-		kind = "track="
+	switch r.kind {
+	case releaseTrack:
+		return "https://bandcamp.com/EmbeddedPlayer/v=2/track=" + r.id + playerURLSuffix
+	case releaseYouTube:
+		return "https://www.youtube.com/oembed?format=json&url=" + url.QueryEscape("https://www.youtube.com/watch?v="+r.id)
+	default:
+		return "https://bandcamp.com/EmbeddedPlayer/v=2/album=" + r.id + playerURLSuffix
 	}
-	return "https://bandcamp.com/EmbeddedPlayer/v=2/" + kind + r.id + playerURLSuffix
 }
 
 // Flow extracts embedded album recommendations and decides which are new.
@@ -196,7 +217,7 @@ func embeddedReleases(doc *html.Node) []embedded {
 // not listed as names. The HTML feed shows this text; RSS does not.
 func observationTrace(doc *html.Node) string {
 	var lines []string
-	albums, tracks, skipped := 0, 0, 0
+	albums, tracks, videos, skipped := 0, 0, 0, 0
 	var walk func(*html.Node)
 	walk = func(node *html.Node) {
 		if node.Type == html.ElementNode {
@@ -204,19 +225,20 @@ func observationTrace(doc *html.Node) string {
 			case "iframe":
 				src := oneLine(attr(node, "src"))
 				if rel, ok := embeddedRelease(src); ok {
-					kind := "album"
-					hypothesis := "H3"
-					if rel.kind == releaseTrack {
-						kind = "track"
-						hypothesis = "H2"
+					switch rel.kind {
+					case releaseTrack:
 						tracks++
-					} else {
+						lines = append(lines, fmt.Sprintf("H2 kept iframe: bandcamp track %s\nsrc: %s", rel.id, src))
+					case releaseYouTube:
+						videos++
+						lines = append(lines, fmt.Sprintf("H1 kept iframe: youtube %s\nsrc: %s", rel.id, src))
+					default:
 						albums++
+						lines = append(lines, fmt.Sprintf("H3 kept iframe: bandcamp album %s\nsrc: %s", rel.id, src))
 					}
-					lines = append(lines, fmt.Sprintf("%s kept iframe: bandcamp %s %s\nsrc: %s", hypothesis, kind, rel.id, src))
 				} else {
 					skipped++
-					lines = append(lines, "H1 skipped iframe: not a Bandcamp album or track player\nsrc: "+src)
+					lines = append(lines, "H1 skipped iframe: not a Bandcamp album, Bandcamp track, or YouTube video\nsrc: "+src)
 				}
 			case "strong":
 				if label := proseName(node); label != "" {
@@ -230,7 +252,7 @@ func observationTrace(doc *html.Node) string {
 	}
 	walk(doc)
 	var b strings.Builder
-	fmt.Fprintf(&b, "kept albums: %d\nkept tracks: %d\nskipped iframes: %d\n", albums, tracks, skipped)
+	fmt.Fprintf(&b, "kept albums: %d\nkept tracks: %d\nkept youtube: %d\nskipped iframes: %d\n", albums, tracks, videos, skipped)
 	for _, line := range lines {
 		b.WriteString(line)
 		b.WriteByte('\n')
@@ -330,6 +352,9 @@ func embeddedRelease(src string) (release, bool) {
 	if parsed.Scheme != "" && parsed.Scheme != "https" {
 		return release{}, false
 	}
+	if id, ok := youtubeVideoID(parsed); ok {
+		return release{kind: releaseYouTube, id: id}, true
+	}
 	if parsed.Host != playerHost && parsed.Host != playerAltHost {
 		return release{}, false
 	}
@@ -371,6 +396,40 @@ func embeddedRelease(src string) (release, bool) {
 		return release{}, false
 	}
 	return release{kind: releaseTrack, id: trackID}, true
+}
+
+// youtubeVideoID returns the video id from a /embed/<id> player URL.
+func youtubeVideoID(parsed *url.URL) (string, bool) {
+	switch parsed.Host {
+	case "youtube.com", "www.youtube.com", "youtube-nocookie.com", "www.youtube-nocookie.com":
+	default:
+		return "", false
+	}
+	rest, ok := strings.CutPrefix(parsed.Path, "/embed/")
+	if !ok || rest == "" {
+		return "", false
+	}
+	if cut, _, found := strings.Cut(rest, "/"); found {
+		rest = cut
+	}
+	if !validYouTubeID(rest) {
+		return "", false
+	}
+	return rest, true
+}
+
+func validYouTubeID(id string) bool {
+	if len(id) != 11 {
+		return false
+	}
+	for _, r := range id {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '_', r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func canonicalID(raw string) (string, error) {
@@ -520,6 +579,12 @@ func observedReleases(items []rfs.ExtractedItem) ([]observed, error) {
 
 // itemRelease recovers the release Extract embedded in an item GUID.
 func itemRelease(guid string) (release, error) {
+	if raw, ok := strings.CutPrefix(guid, youtubeGUIDPrefix); ok {
+		if !validYouTubeID(raw) {
+			return release{}, fmt.Errorf("acloserlisten: unexpected item GUID %q", guid)
+		}
+		return release{kind: releaseYouTube, id: raw}, nil
+	}
 	if raw, ok := strings.CutPrefix(guid, trackGUIDPrefix); ok {
 		id, err := canonicalID(raw)
 		if err != nil {
@@ -539,6 +604,12 @@ func itemRelease(guid string) (release, error) {
 }
 
 func releaseFromCheckpointKey(key string) (release, error) {
+	if raw, ok := strings.CutPrefix(key, youtubeCheckpointPrefix); ok {
+		if !validYouTubeID(raw) {
+			return release{}, fmt.Errorf("acloserlisten: unexpected checkpoint entry %q", key)
+		}
+		return release{kind: releaseYouTube, id: raw}, nil
+	}
 	if raw, ok := strings.CutPrefix(key, trackCheckpointPrefix); ok {
 		id, err := canonicalID(raw)
 		if err != nil {
@@ -683,7 +754,7 @@ func (Flow) IdentityURL(item rfs.ExtractedItem) (string, error) {
 		return "", err
 	}
 	if rel.kind != releaseTrack {
-		return "", fmt.Errorf("acloserlisten: album %s does not need identity resolution", rel.id)
+		return "", fmt.Errorf("acloserlisten: release %s does not need identity resolution", rel.id)
 	}
 	return rel.playerURL(), nil
 }
@@ -697,7 +768,7 @@ func (Flow) ResolveIdentity(page rfs.Page, item rfs.ExtractedItem) (rfs.Extracte
 		return rfs.ExtractedItem{}, err
 	}
 	if rel.kind != releaseTrack {
-		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: album %s does not need identity resolution", rel.id)
+		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: release %s does not need identity resolution", rel.id)
 	}
 	meta, err := loadPlayer(page, rel.id)
 	if err != nil {
@@ -754,6 +825,9 @@ func (Flow) EnrichAnnouncement(page rfs.Page, item rfs.ExtractedItem) (rfs.Extra
 	if err != nil {
 		return rfs.ExtractedItem{}, err
 	}
+	if rel.kind == releaseYouTube {
+		return enrichYouTube(page, item, rel.id)
+	}
 	meta, err := loadPlayer(page, rel.id)
 	if err != nil {
 		return rfs.ExtractedItem{}, err
@@ -786,6 +860,36 @@ func (Flow) EnrichAnnouncement(page rfs.Page, item rfs.ExtractedItem) (rfs.Extra
 		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: player %s has no artist and title", rel.id)
 	}
 	item.Title = artist + " — " + title
+	return item, nil
+}
+
+// enrichYouTube titles a video from its oEmbed response. A title that already
+// begins with the channel name keeps the remainder, so "Max Richter - Now We
+// Can Sing" becomes "Max Richter — Now We Can Sing".
+func enrichYouTube(page rfs.Page, item rfs.ExtractedItem, id string) (rfs.ExtractedItem, error) {
+	var meta struct {
+		Title  *string `json:"title"`
+		Author *string `json:"author_name"`
+	}
+	if err := json.Unmarshal(page, &meta); err != nil {
+		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: decode video %s: %w", id, err)
+	}
+	title := strings.TrimSpace(textValue(meta.Title))
+	author := strings.TrimSpace(textValue(meta.Author))
+	if title == "" || author == "" {
+		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: video %s has no artist and title", id)
+	}
+	for _, sep := range []string{" — ", " – ", " - "} {
+		if rest, ok := strings.CutPrefix(title, author+sep); ok {
+			title = strings.TrimSpace(rest)
+			break
+		}
+	}
+	if title == "" {
+		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: video %s has no artist and title", id)
+	}
+	item.Title = author + " — " + title
+	item.Metadata = ""
 	return item, nil
 }
 

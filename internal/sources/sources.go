@@ -15,7 +15,7 @@ import (
 func All() []rfs.Source {
 	return []rfs.Source{
 		{ID: "acloserlisten", URL: acloserlisten.PageURL, Meta: rfs.SourceMeta{
-			Title: "A Closer Listen recommendations", Description: "New recommended Bandcamp releases, announced once per album or standalone track.", Link: acloserlisten.HumanURL,
+			Title: "A Closer Listen recommendations", Description: "New recommended releases, announced once per Bandcamp album, standalone track, or YouTube video.", Link: acloserlisten.HumanURL,
 		}, Flow: acloserlisten.Flow{}},
 		{
 			ID:  "seadex",
