@@ -17,6 +17,9 @@ func TestRenderHTMLFeedShowsObservationTrace(t *testing.T) {
 	if !strings.Contains(page, "H1 skipped iframe: &lt;not a player&gt;") {
 		t.Fatalf("trace was missing or not escaped:\n%s", page)
 	}
+	if !strings.Contains(page, `console.log("H1 skipped iframe: \u003cnot a player\u003e")`) {
+		t.Fatalf("trace was not logged to the console:\n%s", page)
+	}
 }
 
 func TestRenderHTMLFeedOmitsEmptyObservation(t *testing.T) {
@@ -24,7 +27,7 @@ func TestRenderHTMLFeedOmitsEmptyObservation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(body), "Latest observation") {
-		t.Fatal("empty trace rendered an observation section")
+	if page := string(body); strings.Contains(page, "Latest observation") || strings.Contains(page, "console.log") {
+		t.Fatalf("empty trace rendered an observation:\n%s", page)
 	}
 }

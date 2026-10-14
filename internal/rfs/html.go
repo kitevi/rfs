@@ -2,6 +2,7 @@ package rfs
 
 import (
 	"bytes"
+	"encoding/json"
 	"html/template"
 	"time"
 )
@@ -72,6 +73,7 @@ const feedTemplate = `<!DOCTYPE html>
 {{ else }}<li class="meta">No items yet.</li>
 {{ end }}</ul>
 <footer class="version">{{ .Build }}</footer>
+{{ if .TraceJS }}<script>console.log({{ .TraceJS }})</script>{{ end }}
 </body>
 </html>`
 
@@ -83,11 +85,12 @@ type feedItemView struct {
 }
 
 type feedView struct {
-	ID    string
-	Meta  SourceMeta
-	Items []feedItemView
-	Trace string
-	Build BuildInfo
+	ID      string
+	Meta    SourceMeta
+	Items   []feedItemView
+	Trace   string
+	TraceJS template.JS
+	Build   BuildInfo
 }
 
 type indexView struct {
@@ -105,11 +108,12 @@ func RenderHTMLIndex(sources []Source, build BuildInfo) ([]byte, error) {
 // info in the footer.
 func RenderHTMLFeed(sourceID string, meta SourceMeta, items []Item, trace string, build BuildInfo) ([]byte, error) {
 	view := feedView{
-		ID:    sourceID,
-		Meta:  meta,
-		Items: make([]feedItemView, 0, len(items)),
-		Trace: trace,
-		Build: build,
+		ID:      sourceID,
+		Meta:    meta,
+		Items:   make([]feedItemView, 0, len(items)),
+		Trace:   trace,
+		TraceJS: traceScript(trace),
+		Build:   build,
 	}
 	for _, item := range items {
 		var description any = item.Description
@@ -143,6 +147,19 @@ func renderTemplate(name, text string, data any) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+// traceScript is the observation text as a JavaScript string literal. json.Marshal
+// escapes it, and template.JS inserts that literal without HTML escaping.
+func traceScript(trace string) template.JS {
+	if trace == "" {
+		return ""
+	}
+	encoded, err := json.Marshal(trace)
+	if err != nil {
+		return ""
+	}
+	return template.JS(encoded)
 }
 
 func formatHTMLDate(t time.Time) string {
