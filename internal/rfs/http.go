@@ -2,7 +2,6 @@ package rfs
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
@@ -97,7 +96,7 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		body, err := RenderRSS(source.Meta, items)
 		writeRendered(w, "application/rss+xml; charset=utf-8", body, err)
 	case "html":
-		body, err := RenderHTMLFeed(sourceID, source.Meta, items, h.observationTrace(r.Context(), sourceID), h.build)
+		body, err := RenderHTMLFeed(sourceID, source.Meta, items, h.build)
 		writeRendered(w, "text/html; charset=utf-8", body, err)
 	default:
 		http.NotFound(w, r)
@@ -114,28 +113,6 @@ func writeRendered(w http.ResponseWriter, contentType string, body []byte, err e
 	}
 	w.Header().Set("Content-Type", contentType)
 	_, _ = w.Write(body)
-}
-
-// observationTrace is the latest poll's embed-by-embed note, stored in the
-// announcement checkpoint. It is shown on the HTML page only. A source with
-// no checkpoint, or a checkpoint written before traces existed, contributes
-// nothing.
-func (h HTTPHandler) observationTrace(ctx context.Context, sourceID string) string {
-	store, ok := h.store.(AnnouncementStore)
-	if !ok {
-		return ""
-	}
-	raw, err := store.LoadAnnouncementCheckpoint(ctx, sourceID)
-	if err != nil || len(raw) == 0 {
-		return ""
-	}
-	var state struct {
-		Trace string `json:"trace"`
-	}
-	if err := json.Unmarshal(raw, &state); err != nil {
-		return ""
-	}
-	return state.Trace
 }
 
 func (h HTTPHandler) serveIndex(w http.ResponseWriter, r *http.Request) {

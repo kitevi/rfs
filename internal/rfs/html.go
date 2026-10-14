@@ -2,7 +2,6 @@ package rfs
 
 import (
 	"bytes"
-	"encoding/json"
 	"html/template"
 	"time"
 )
@@ -20,8 +19,6 @@ li:last-child { border-bottom: none; }
 .item-date { color: #666; font-size: 0.85rem; }
 .rss { font-size: 0.8rem; }
 footer.version { color: #999; font-size: 0.8rem; margin-top: 2rem; }
-pre.trace { white-space: pre-wrap; background: #f6f6f6; padding: 0.75rem; font: 0.8rem/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-h2 { font-size: 1rem; margin: 1.5rem 0 0.5rem; }
 `
 
 const indexTemplate = `<!DOCTYPE html>
@@ -62,9 +59,7 @@ const feedTemplate = `<!DOCTYPE html>
 {{ if .Meta.Description }}<p class="meta">{{ .Meta.Description }}</p>{{ end }}
 <p class="meta"><a href="{{ .Meta.Link }}">source</a> · <a class="rss" href="/feeds/{{ .ID }}.xml">RSS feed</a></p>
 </header>
-{{ if .Trace }}<h2>Latest observation</h2>
-<pre class="trace">{{ .Trace }}</pre>
-{{ end }}<ul>
+<ul>
 {{ range .Items }}<li>
 <a class="item-title" href="{{ .Link }}">{{ .Title }}</a>
 <p class="item-date">{{ .PubDate }}</p>
@@ -73,7 +68,6 @@ const feedTemplate = `<!DOCTYPE html>
 {{ else }}<li class="meta">No items yet.</li>
 {{ end }}</ul>
 <footer class="version">{{ .Build }}</footer>
-{{ if .TraceJS }}<script>console.log({{ .TraceJS }})</script>{{ end }}
 </body>
 </html>`
 
@@ -85,12 +79,10 @@ type feedItemView struct {
 }
 
 type feedView struct {
-	ID      string
-	Meta    SourceMeta
-	Items   []feedItemView
-	Trace   string
-	TraceJS template.JS
-	Build   BuildInfo
+	ID    string
+	Meta  SourceMeta
+	Items []feedItemView
+	Build BuildInfo
 }
 
 type indexView struct {
@@ -106,14 +98,12 @@ func RenderHTMLIndex(sources []Source, build BuildInfo) ([]byte, error) {
 
 // RenderHTMLFeed renders a single source's items as an HTML page, with build
 // info in the footer.
-func RenderHTMLFeed(sourceID string, meta SourceMeta, items []Item, trace string, build BuildInfo) ([]byte, error) {
+func RenderHTMLFeed(sourceID string, meta SourceMeta, items []Item, build BuildInfo) ([]byte, error) {
 	view := feedView{
-		ID:      sourceID,
-		Meta:    meta,
-		Items:   make([]feedItemView, 0, len(items)),
-		Trace:   trace,
-		TraceJS: traceScript(trace),
-		Build:   build,
+		ID:    sourceID,
+		Meta:  meta,
+		Items: make([]feedItemView, 0, len(items)),
+		Build: build,
 	}
 	for _, item := range items {
 		var description any = item.Description
@@ -147,19 +137,6 @@ func renderTemplate(name, text string, data any) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
-}
-
-// traceScript is the observation text as a JavaScript string literal. json.Marshal
-// escapes it, and template.JS inserts that literal without HTML escaping.
-func traceScript(trace string) template.JS {
-	if trace == "" {
-		return ""
-	}
-	encoded, err := json.Marshal(trace)
-	if err != nil {
-		return ""
-	}
-	return template.JS(encoded)
 }
 
 func formatHTMLDate(t time.Time) string {
