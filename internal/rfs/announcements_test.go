@@ -240,6 +240,104 @@ func TestAnnouncementCommitFailurePreservesCheckpointAndFeed(t *testing.T) {
 	}
 }
 
+type urlFetcher struct {
+	pages map[string]Page
+	err   map[string]error
+}
+
+func (f urlFetcher) Fetch(_ context.Context, url string, _ FetchCache) (FetchResult, error) {
+	if err := f.err[url]; err != nil {
+		return FetchResult{}, err
+	}
+	page, ok := f.pages[url]
+	if !ok {
+		return FetchResult{}, fmt.Errorf("unexpected fetch %s", url)
+	}
+	return FetchResult{Status: FetchModified, Page: page}, nil
+}
+
+// rewriteFlow resolves track:9 to album:1 before Evaluate, so the poller must
+// not announce the unresolved track identity.
+type rewriteFlow struct{ announcementTestFlow }
+
+func (f *rewriteFlow) PlanIdentities(json.RawMessage, []ExtractedItem) ([]ExtractedItem, []ExtractedItem, error) {
+	var pending []ExtractedItem
+	for _, item := range f.items {
+		if strings.HasPrefix(item.GUID, "track:") {
+			pending = append(pending, item)
+		}
+	}
+	return append([]ExtractedItem(nil), f.items...), pending, nil
+}
+
+func (f *rewriteFlow) IdentityURL(item ExtractedItem) (string, error) {
+	return "https://players.test/" + item.GUID, nil
+}
+
+func (f *rewriteFlow) ResolveIdentity(page Page, item ExtractedItem) (ExtractedItem, error) {
+	item.GUID = strings.TrimSpace(string(page))
+	return item, nil
+}
+
+func TestAnnouncementIdentityIsResolvedBeforeEvaluate(t *testing.T) {
+	ctx := t.Context()
+	store, err := OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	flow := &rewriteFlow{announcementTestFlow: announcementTestFlow{
+		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
+		version: 1,
+	}}
+	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
+	fetcher := urlFetcher{pages: map[string]Page{
+		source.URL:                     Page("<page>"),
+		"https://players.test/track:9": Page("album:1"),
+	}}
+	if _, err := (Poller{Fetcher: fetcher, Store: store}).Poll(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	stored := loadAnnouncementFeed(t, store, source.ID)
+	if len(stored) != 1 {
+		t.Fatalf("stored %#v, want the track collapsed into the album", stored)
+	}
+	if _, ok := stored["track:9"]; ok {
+		t.Fatal("unresolved track identity was published")
+	}
+}
+
+func TestAnnouncementIdentityFailurePublishesNothing(t *testing.T) {
+	ctx := t.Context()
+	store, err := OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	flow := &rewriteFlow{announcementTestFlow: announcementTestFlow{
+		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
+		version: 1,
+	}}
+	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
+	fetcher := urlFetcher{
+		pages: map[string]Page{source.URL: Page("<page>")},
+		err:   map[string]error{"https://players.test/track:9": fmt.Errorf("player down")},
+	}
+	if _, err := (Poller{Fetcher: fetcher, Store: store}).Poll(ctx, source); err == nil {
+		t.Fatal("identity fetch failure did not fail the poll")
+	}
+	if stored := loadAnnouncementFeed(t, store, source.ID); len(stored) != 0 {
+		t.Fatalf("failed identity resolution published %#v", stored)
+	}
+	checkpoint, err := store.LoadAnnouncementCheckpoint(ctx, source.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checkpoint) != 0 {
+		t.Fatalf("failed identity resolution advanced the checkpoint: %s", checkpoint)
+	}
+}
+
 func TestAnnouncementFlowCannotAlsoCompareChanges(t *testing.T) {
 	ctx := t.Context()
 	store, err := OpenInMemorySQLiteStore()

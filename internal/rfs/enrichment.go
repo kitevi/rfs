@@ -2,6 +2,7 @@ package rfs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 )
 
@@ -79,6 +80,74 @@ type EnrichedAnnouncementFlow interface {
 	// publish. It must keep the item's GUID: identity, not metadata, decides
 	// what has already been announced.
 	EnrichAnnouncement(Page, ExtractedItem) (ExtractedItem, error)
+}
+
+// AnnouncementIdentityFlow rewrites an extracted item to the release identity
+// Evaluate records. rfs fetches; the Flow only reads the response. Items whose
+// identity is already final are not fetched.
+type AnnouncementIdentityFlow interface {
+	AnnouncementFlow
+
+	// PlanIdentities applies identities this checkpoint already resolved and
+	// returns items that still need a player page, in observation order. ready
+	// preserves that order and still contains each pending item unchanged, so
+	// the resolved item can replace it.
+	PlanIdentities(checkpoint json.RawMessage, current []ExtractedItem) ([]ExtractedItem, []ExtractedItem, error)
+
+	// IdentityURL is the player page for one pending item.
+	IdentityURL(ExtractedItem) (string, error)
+
+	// ResolveIdentity returns the item Evaluate should see. It may replace the
+	// GUID with the release the player belongs to.
+	ResolveIdentity(Page, ExtractedItem) (ExtractedItem, error)
+}
+
+// resolveAnnouncementIdentities fetches player pages for items whose release
+// identity is not yet final. A failure leaves the checkpoint untouched, so the
+// next poll retries the same observation.
+func (p Poller) resolveAnnouncementIdentities(ctx context.Context, flow AnnouncementFlow, checkpoint json.RawMessage, current []ExtractedItem) ([]ExtractedItem, error) {
+	resolver, ok := flow.(AnnouncementIdentityFlow)
+	if !ok || len(current) == 0 {
+		return current, nil
+	}
+	ready, pending, err := resolver.PlanIdentities(checkpoint, current)
+	if err != nil {
+		return nil, err
+	}
+	for _, item := range pending {
+		url, err := resolver.IdentityURL(item)
+		if err != nil {
+			return nil, err
+		}
+		if url == "" {
+			return nil, fmt.Errorf("announcement identity missing a player URL")
+		}
+		result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+		if err != nil {
+			return nil, err
+		}
+		if result.Status == FetchThrottled {
+			return nil, &fetchThrottle{result.RetryAfter}
+		}
+		if result.Status != FetchModified {
+			return nil, fmt.Errorf("announcement identity unavailable (status %d)", result.Status)
+		}
+		resolved, err := resolver.ResolveIdentity(result.Page, item)
+		if err != nil {
+			return nil, err
+		}
+		found := false
+		for i := range ready {
+			if ready[i].GUID == item.GUID {
+				ready[i] = resolved
+				found = true
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("announcement identity %q was not in the observation", item.GUID)
+		}
+	}
+	return ready, nil
 }
 
 // enrichAnnouncements resolves metadata for newly announced items before they

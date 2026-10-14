@@ -55,6 +55,10 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 	if err != nil {
 		return PollResult{}, err
 	}
+	current, err = p.resolveAnnouncementIdentities(ctx, flow, checkpoint, current)
+	if err != nil {
+		return pollFailure(err)
+	}
 	decision, err := flow.Evaluate(checkpoint, current)
 	if err != nil {
 		return pollFailure(err)

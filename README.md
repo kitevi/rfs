@@ -110,10 +110,14 @@ RFS_TEST_MALSTACK38814_LIVE=1 go test ./internal/sources/malstack38814 -run Test
 
 ### A Closer Listen recommendations
 
-`/feeds/acloserlisten.xml` (or `.html`) publishes all currently embedded Bandcamp
-albums on the first successful poll, then only previously unseen album IDs.
-Returning albums and editorial changes do not create duplicates. Titles come
-from Bandcamp player metadata; links lead to the recommendations page.
+`/feeds/acloserlisten.xml` (or `.html`) publishes embedded Bandcamp releases.
+The first successful poll announces every release on the page. Later polls
+announce only releases that have not been announced before. An album player is
+that album. A track player that belongs to an album is that same album. A track
+with no album is announced once, as the track. YouTube and other players are
+ignored. Returning releases and editorial changes do not create duplicates.
+Titles come from Bandcamp player metadata; links lead to the recommendations
+page.
 
 The source reads the public WordPress API rather than challenge-protected HTML.
 Metadata requests run sequentially and only for new albums. Any failed metadata

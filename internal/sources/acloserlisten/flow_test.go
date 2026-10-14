@@ -1,7 +1,9 @@
 package acloserlisten
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"strings"
@@ -33,6 +35,30 @@ func section(genre string, albumIDs ...int64) string {
 		b.WriteString(embed(id))
 	}
 	return b.String()
+}
+
+// trackEmbed is a Bandcamp track player, the form used when a recommendation
+// is not an album embed.
+func trackEmbed(trackID int64) string {
+	return fmt.Sprintf(`<iframe width="100%%" src="//bandcamp.com/EmbeddedPlayer/v=2/track=%d/size=large/bgcol=333333/linkcol=ffffff/tracklist=false/artwork=small/"></iframe>`, trackID)
+}
+
+// trackPlayerPage is a track player body. albumID 0 is a standalone track.
+func trackPlayerPage(t *testing.T, trackID int64, artist, title string, albumID int64, albumTitle string) rfs.Page {
+	t.Helper()
+	payload := map[string]any{
+		"artist":      artist,
+		"album_title": albumTitle,
+		"tracks":      []any{map[string]any{"id": trackID, "title": title, "artist": artist}},
+	}
+	if albumID > 0 {
+		payload["album_id"] = albumID
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rfs.Page(`<html><body><div class="player" data-player-data="` + html.EscapeString(string(body)) + `"></div></body></html>`)
 }
 
 // playerPage is the Bandcamp EmbeddedPlayer body carrying data-player-data.
@@ -104,7 +130,8 @@ func TestExtractIgnoresForeignFrames(t *testing.T) {
 	content := section("Ambient", 1) +
 		`<iframe src="https://www.youtube.com/embed?v=album=5"></iframe>` +
 		`<iframe src="https://evil.example/EmbeddedPlayer/v=2/album=6/size=large/"></iframe>` +
-		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/album=notanumber/size=large/"></iframe>`
+		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/album=notanumber/size=large/"></iframe>` +
+		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/track=notanumber/size=large/"></iframe>`
 	items, err := (Flow{}).Extract(pageJSON(t, PageID, content))
 	if err != nil {
 		t.Fatal(err)
@@ -320,4 +347,261 @@ func TestEnrichAnnouncementRejectsUnusablePlayers(t *testing.T) {
 			t.Fatalf("%s: EnrichAnnouncement succeeded, want an error", name)
 		}
 	}
+}
+
+func TestExtractKeepsTrackPlayersAndLeavesAlbumURLsAsAlbums(t *testing.T) {
+	content := section("Ambient", 1) +
+		trackEmbed(9) +
+		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/album=5/size=large/track=99/artwork=small/"></iframe>` +
+		`<iframe class="youtube-player" src="https://www.youtube.com/embed/uZf2jkCI6Fo"></iframe>`
+	items, err := (Flow{}).Extract(pageJSON(t, PageID, content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{guidPrefix + "1", trackGUIDPrefix + "9", guidPrefix + "5"}
+	if len(items) != len(want) {
+		t.Fatalf("got %#v, want %v", items, want)
+	}
+	for i, guid := range want {
+		if items[i].GUID != guid {
+			t.Fatalf("item %d GUID = %q, want %q", i, items[i].GUID, guid)
+		}
+	}
+	if items[1].Description != "Genre: Ambient" {
+		t.Fatalf("track description = %q, want the section it appeared under", items[1].Description)
+	}
+}
+
+func TestExtractOctoberPageKeepsTheTrackAndTheAlbum(t *testing.T) {
+	items, err := (Flow{}).Extract(octoberPage(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("got %#v, want the track and the album", items)
+	}
+	if items[0].GUID != trackGUIDPrefix+"687192546" || items[0].Description != "" {
+		t.Fatalf("track item = %#v", items[0])
+	}
+	if items[1].GUID != guidPrefix+"4925039" || items[1].Description != "" {
+		t.Fatalf("album item = %#v", items[1])
+	}
+}
+
+// octoberPage is the fall revision that names three releases and embeds a
+// YouTube video, a standalone track, and one album.
+func octoberPage(t *testing.T) rfs.Page {
+	t.Helper()
+	content := `<p><strong>Max Richter</strong> returns. <strong>Nero&#8217;s Day at Disneyland</strong> offers Grand Reopening. <strong>Caspian</strong> returns.</p>` +
+		`<iframe class="youtube-player" src="https://www.youtube.com/embed/uZf2jkCI6Fo?version=3&#038;rel=1"></iframe>` +
+		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/track=687192546/size=large/bgcol=333333/linkcol=ffffff/tracklist=false/artwork=small/"></iframe>` +
+		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/album=4925039/size=large/bgcol=333333/linkcol=ffffff/tracklist=false/artwork=small/"></iframe>`
+	return pageJSON(t, PageID, content)
+}
+
+func TestResolveIdentityCollapsesAnAlbumTrackAndKeepsAStandaloneTrack(t *testing.T) {
+	flow := Flow{}
+	standalone := rfs.ExtractedItem{GUID: trackGUIDPrefix + "687192546", Link: HumanURL}
+	resolved, err := flow.ResolveIdentity(trackPlayerPage(t, 687192546, "Nero's Day At Disneyland", "Ghost Debt", 0, ""), standalone)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resolved.GUID != standalone.GUID {
+		t.Fatalf("standalone GUID = %q", resolved.GUID)
+	}
+	if resolved.Metadata == "" {
+		t.Fatal("standalone resolution did not record the track")
+	}
+
+	fromAlbum := rfs.ExtractedItem{GUID: trackGUIDPrefix + "3817274316", Description: "Genre: Rock, Post-Rock, Folk & Jazz"}
+	collapsed, err := flow.ResolveIdentity(trackPlayerPage(t, 3817274316, "Caspian", "Hiraeth", 4925039, "Caspian"), fromAlbum)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if collapsed.GUID != guidPrefix+"4925039" {
+		t.Fatalf("album track GUID = %q, want the album", collapsed.GUID)
+	}
+	if collapsed.Description != fromAlbum.Description {
+		t.Fatalf("collapse dropped the genre: %q", collapsed.Description)
+	}
+	if _, err := flow.ResolveIdentity(trackPlayerPage(t, 1, "Artist", "Song", 0, ""), standalone); err == nil {
+		t.Fatal("a player for a different track was accepted")
+	}
+}
+
+func TestEvaluateAnnouncesANewStandaloneTrackWithoutRepeatingAlbums(t *testing.T) {
+	flow := Flow{}
+	albums, err := flow.Extract(pageJSON(t, PageID, section("Ambient", 1, 2)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := flow.Evaluate(nil, albums)
+	if err != nil {
+		t.Fatal(err)
+	}
+	track, err := flow.ResolveIdentity(trackPlayerPage(t, 687192546, "Nero's Day At Disneyland", "Ghost Debt", 0, ""), rfs.ExtractedItem{
+		GUID: trackGUIDPrefix + "687192546", Link: HumanURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	collapsed, err := flow.ResolveIdentity(trackPlayerPage(t, 3817274316, "Caspian", "Hiraeth", 1, "Album"), rfs.ExtractedItem{
+		GUID: trackGUIDPrefix + "3817274316",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if collapsed.GUID != guidPrefix+"1" {
+		t.Fatalf("track collapsed to %q, want album 1", collapsed.GUID)
+	}
+	decision, err := flow.Evaluate(first.Checkpoint, []rfs.ExtractedItem{albums[0], track, collapsed})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(decision.Announcements) != 1 || decision.Announcements[0].GUID != track.GUID {
+		t.Fatalf("announced %#v, want only the standalone track", decision.Announcements)
+	}
+	if decision.Announcements[0].Metadata != "" {
+		t.Fatalf("announcement kept identity metadata: %q", decision.Announcements[0].Metadata)
+	}
+	var state checkpoint
+	if err := json.Unmarshal(decision.Checkpoint, &state); err != nil {
+		t.Fatal(err)
+	}
+	if state.Tracks["687192546"] != "track:687192546" || state.Tracks["3817274316"] != "1" {
+		t.Fatalf("resolved tracks = %#v", state.Tracks)
+	}
+	ready, pending, err := flow.PlanIdentities(decision.Checkpoint, []rfs.ExtractedItem{
+		albums[0],
+		{GUID: trackGUIDPrefix + "687192546"},
+		{GUID: trackGUIDPrefix + "3817274316"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(pending) != 0 {
+		t.Fatalf("known tracks still need a fetch: %#v", pending)
+	}
+	if len(ready) != 2 || ready[0].GUID != guidPrefix+"1" || ready[1].GUID != track.GUID {
+		t.Fatalf("planned observation = %#v", ready)
+	}
+}
+
+func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testing.T) {
+	ctx := t.Context()
+	store, err := rfs.OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	flow := Flow{}
+	fetcher := &pageFetcher{pages: map[string]rfs.Page{
+		PageURL: pageJSON(t, PageID, section("Ambient", 1)+section("Drone", 2)),
+	}}
+	for _, album := range []struct {
+		id           int64
+		artist, name string
+	}{
+		{1, "Kayla Painter", "Tectonic Particles"},
+		{2, "Caspian", "Caspian"},
+	} {
+		item := rfs.ExtractedItem{GUID: guidPrefix + strconvI64(album.id)}
+		url, err := flow.AnnouncementEnrichmentURL(item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		fetcher.pages[url] = playerPage(t, album.id, album.artist, album.name)
+	}
+	trackItem := rfs.ExtractedItem{GUID: trackGUIDPrefix + "9"}
+	albumTrack := rfs.ExtractedItem{GUID: trackGUIDPrefix + "8"}
+	trackURL, err := flow.IdentityURL(trackItem)
+	if err != nil {
+		t.Fatal(err)
+	}
+	albumTrackURL, err := flow.IdentityURL(albumTrack)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetcher.pages[trackURL] = trackPlayerPage(t, 9, "Nero's Day At Disneyland", "Ghost Debt", 0, "")
+	fetcher.pages[albumTrackURL] = trackPlayerPage(t, 8, "Caspian", "Hiraeth", 2, "Caspian")
+	source := rfs.Source{ID: "acloserlisten", URL: PageURL, Flow: flow}
+	poller := rfs.Poller{Fetcher: fetcher, Store: store}
+
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	fetcher.pages[PageURL] = pageJSON(t, PageID, `<iframe src="https://www.youtube.com/embed/uZf2jkCI6Fo"></iframe>`+embed(1)+trackEmbed(9)+trackEmbed(8))
+	fetcher.fail = map[string]error{trackURL: errors.New("player down")}
+	if _, err := poller.Poll(ctx, source); err == nil {
+		t.Fatal("a failing track player committed anyway")
+	}
+	if stored := loadFeed(t, store); len(stored) != 2 {
+		t.Fatalf("failed poll stored %#v", stored)
+	}
+	delete(fetcher.fail, trackURL)
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	stored := loadFeed(t, store)
+	if len(stored) != 3 {
+		t.Fatalf("stored %#v, want the two albums and the standalone track", stored)
+	}
+	got := stored[trackGUIDPrefix+"9"]
+	if got.Title != "Nero's Day At Disneyland — Ghost Debt" || got.Metadata != "" {
+		t.Fatalf("standalone track = %#v", got)
+	}
+	if _, ok := stored[trackGUIDPrefix+"8"]; ok {
+		t.Fatal("a track from an announced album was published again")
+	}
+	hits := map[string]int{}
+	for url, count := range fetcher.hits {
+		hits[url] = count
+	}
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	if fetcher.hits[trackURL] != hits[trackURL] || fetcher.hits[albumTrackURL] != hits[albumTrackURL] {
+		t.Fatalf("resolved players were fetched again: before %v after %v", hits, fetcher.hits)
+	}
+	if len(loadFeed(t, store)) != 3 {
+		t.Fatal("repeat poll changed the feed")
+	}
+}
+
+func strconvI64(id int64) string {
+	return fmt.Sprintf("%d", id)
+}
+
+func loadFeed(t *testing.T, store *rfs.SQLiteStore) map[string]rfs.Item {
+	t.Helper()
+	items, err := store.LoadSnapshot(context.Background(), "acloserlisten")
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := make(map[string]rfs.Item, len(items))
+	for _, item := range items {
+		stored[item.GUID] = item
+	}
+	return stored
+}
+
+type pageFetcher struct {
+	pages map[string]rfs.Page
+	hits  map[string]int
+	fail  map[string]error
+}
+
+func (f *pageFetcher) Fetch(_ context.Context, url string, _ rfs.FetchCache) (rfs.FetchResult, error) {
+	if f.hits == nil {
+		f.hits = map[string]int{}
+	}
+	f.hits[url]++
+	if err := f.fail[url]; err != nil {
+		return rfs.FetchResult{}, err
+	}
+	page, ok := f.pages[url]
+	if !ok {
+		return rfs.FetchResult{}, fmt.Errorf("unexpected fetch %s", url)
+	}
+	return rfs.FetchResult{Status: rfs.FetchModified, Page: page}, nil
 }
