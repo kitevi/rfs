@@ -6,6 +6,7 @@ import (
 
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources"
+	"github.com/kitevi/rfs/internal/sources/cittafiera"
 	"github.com/kitevi/rfs/internal/sources/coached"
 	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/malstack"
@@ -135,8 +136,8 @@ func TestAllIncludesMALStack38814Source(t *testing.T) {
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
 // osmer-rain-trieste, ptv-remote-italy-jobs, and transport
 // (arriva-udine, trieste-trasporti, apt-gorizia, trenitalia-disruptions) Flows
-// were removed, and the one-piece, coached-essays, and visionario Flows were
-// added.
+// were removed, and the one-piece, coached-essays, visionario, and
+// citta-fiera Flows were added.
 func TestAllExcludesRemovedSources(t *testing.T) {
 	want := map[string]bool{
 		"meltzer-5-star-matches": true,
@@ -149,6 +150,7 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 		"mal-stack-38814":        true,
 		"coached-essays":         true,
 		"visionario":             true,
+		"citta-fiera":            true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -160,8 +162,48 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 10 {
-		t.Fatalf("len(sources.All()) = %d, want 10", len(all))
+	if len(all) != 11 {
+		t.Fatalf("len(sources.All()) = %d, want 11", len(all))
+	}
+}
+
+func TestAllIncludesCittaFieraSource(t *testing.T) {
+	var found bool
+	for _, source := range sources.All() {
+		if source.ID != "citta-fiera" {
+			continue
+		}
+		found = true
+		if source.URL != cittafiera.PageURL {
+			t.Fatalf("citta-fiera source URL = %q, want %q", source.URL, cittafiera.PageURL)
+		}
+		if source.Meta.Link != cittafiera.HumanURL {
+			t.Fatalf("citta-fiera source link = %q, want %q", source.Meta.Link, cittafiera.HumanURL)
+		}
+		if source.Meta.Title != "Cine Città Fiera" || source.Meta.Description == "" {
+			t.Fatalf("citta-fiera source metadata = %#v", source.Meta)
+		}
+		if source.Meta.ItemDescriptionsHTML {
+			t.Fatal("citta-fiera descriptions are plain text")
+		}
+		if source.Flow.Version() != cittafiera.ExtractVersion {
+			t.Fatalf("citta-fiera source flow version = %d, want %d", source.Flow.Version(), cittafiera.ExtractVersion)
+		}
+		if _, ok := source.Flow.(rfs.AnnouncementFlow); !ok {
+			t.Fatalf("citta-fiera flow %T does not implement rfs.AnnouncementFlow", source.Flow)
+		}
+		if _, ok := source.Flow.(rfs.DatedAnnouncementFlow); !ok {
+			t.Fatalf("citta-fiera flow %T does not implement rfs.DatedAnnouncementFlow", source.Flow)
+		}
+		if _, ok := source.Flow.(rfs.AnnouncementIdentityFlow); !ok {
+			t.Fatalf("citta-fiera flow %T does not implement rfs.AnnouncementIdentityFlow", source.Flow)
+		}
+		if source.Interval != 0 || source.History != nil || source.EmitInitial || source.EmitVersionChanges {
+			t.Fatal("citta-fiera source must use the default interval and an announcement checkpoint")
+		}
+	}
+	if !found {
+		t.Fatal("sources.All does not include the citta-fiera source")
 	}
 }
 

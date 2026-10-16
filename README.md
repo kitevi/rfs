@@ -29,6 +29,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/coached-essays.html` — HTML view of the essays
 - `/feeds/visionario.xml` — new films at Visionario and Cinema Centrale
 - `/feeds/visionario.html` — HTML view of the films
+- `/feeds/citta-fiera.xml` — new films at Cine Città Fiera
+- `/feeds/citta-fiera.html` — HTML view of the films
 
 ### SeaDex
 
@@ -171,6 +173,31 @@ To verify live access and parsing without touching your database:
 
 ```sh
 RFS_TEST_VISIONARIO_LIVE=1 go test ./internal/sources/visionario -run TestLive -v -count=1
+```
+
+### Cine Città Fiera
+
+`/feeds/citta-fiera.xml` (or `.html`) publishes new films from the homepage at
+cine-cittafiera.com. The homepage lists every film the cinema has loaded,
+including titles whose first screening is months away. The film page's day
+buttons are the real run.
+
+A film is announced once, when its earliest day is today or no more than two
+weeks later, in Europe/Rome. The first poll publishes every film already
+inside that window. A film farther out is remembered and published when the
+window reaches it. Avengers: Doomsday, whose page lists 16–20 December, stays
+out until 2 December. The item link is the film page. The description is the
+first day plus the director and duration, for example `16 Dic 2026, Dave Green,
+01:44`. The 35MM badge is not part of the title.
+
+A film page with no screening day fails the poll and leaves the checkpoint
+unchanged. A held film that leaves the homepage is forgotten. The daily
+schedule page is not the source: it shows one day at a time.
+
+To verify live access and parsing without touching your database:
+
+```sh
+RFS_TEST_CITTAFIERA_LIVE=1 go test ./internal/sources/cittafiera -run TestLive -v -count=1
 ```
 
 ## Storage

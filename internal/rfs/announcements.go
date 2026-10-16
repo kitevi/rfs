@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 // AnnouncementFlow compares a complete observation against a Flow-owned
@@ -20,6 +21,17 @@ type AnnouncementFlow interface {
 	// returns the checkpoint to persist alongside the announcements. An empty
 	// checkpoint means nothing has been announced yet.
 	Evaluate(checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error)
+}
+
+// DatedAnnouncementFlow is an AnnouncementFlow whose decision depends on when
+// the poll runs. The poller passes its clock; Evaluate stays available for
+// Flows that do not care. Methods perform no IO.
+type DatedAnnouncementFlow interface {
+	AnnouncementFlow
+
+	// EvaluateAt is Evaluate at a known instant. now is the poller's clock,
+	// which is UTC unless a test fixes it.
+	EvaluateAt(now time.Time, checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error)
 }
 
 // AnnouncementDecision is the outcome of one announcement comparison.
@@ -59,7 +71,12 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 	if err != nil {
 		return pollFailure(err)
 	}
-	decision, err := flow.Evaluate(checkpoint, current)
+	var decision AnnouncementDecision
+	if dated, ok := flow.(DatedAnnouncementFlow); ok {
+		decision, err = dated.EvaluateAt(p.now(), checkpoint, current)
+	} else {
+		decision, err = flow.Evaluate(checkpoint, current)
+	}
 	if err != nil {
 		return pollFailure(err)
 	}

@@ -3,6 +3,7 @@ package sources
 import (
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources/acloserlisten"
+	"github.com/kitevi/rfs/internal/sources/cittafiera"
 	"github.com/kitevi/rfs/internal/sources/coached"
 	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/malstack"
@@ -16,6 +17,16 @@ import (
 
 func All() []rfs.Source {
 	return []rfs.Source{
+		{
+			ID:  "citta-fiera",
+			URL: cittafiera.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "Cine Città Fiera",
+				Description: "New films at Cine Città Fiera in Udine, announced once the first screening is within two weeks.",
+				Link:        cittafiera.HumanURL,
+			},
+			Flow: cittafiera.Flow{},
+		},
 		{
 			ID:  "visionario",
 			URL: visionario.PageURL,

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 )
 
 // announcementTestFlow announces every observed item exactly once, storing the
@@ -98,6 +99,45 @@ func decodeAnnouncedGUIDs(t *testing.T, raw json.RawMessage) []string {
 		t.Fatalf("decode checkpoint %q: %v", raw, err)
 	}
 	return announced
+}
+
+// datedAnnouncementFlow records the instant the poller passes. Evaluate fails
+// so a poll that ignores the clock cannot succeed.
+type datedAnnouncementFlow struct {
+	announcementTestFlow
+	got time.Time
+}
+
+func (f *datedAnnouncementFlow) Evaluate(json.RawMessage, []ExtractedItem) (AnnouncementDecision, error) {
+	return AnnouncementDecision{}, fmt.Errorf("dated flow Evaluate called without the poller clock")
+}
+
+func (f *datedAnnouncementFlow) EvaluateAt(now time.Time, checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error) {
+	f.got = now
+	return f.announcementTestFlow.Evaluate(checkpoint, current)
+}
+
+func TestDatedAnnouncementFlowUsesThePollerClock(t *testing.T) {
+	ctx := t.Context()
+	store, err := OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+
+	now := time.Date(2026, 10, 16, 22, 0, 0, 0, time.UTC)
+	flow := &datedAnnouncementFlow{announcementTestFlow: announcementTestFlow{
+		items:   []ExtractedItem{announcementItem("film:1")},
+		version: 1,
+	}}
+	source := Source{ID: "dated", URL: "https://example.com/films", Flow: flow}
+	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: now}}
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatalf("poll: %v", err)
+	}
+	if !flow.got.Equal(now) {
+		t.Fatalf("EvaluateAt now = %s, want %s", flow.got, now)
+	}
 }
 
 func TestAnnouncementFlowsAlwaysFetchTheFullPage(t *testing.T) {
