@@ -6,6 +6,7 @@ import (
 
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources"
+	"github.com/kitevi/rfs/internal/sources/coached"
 	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/malstack"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
@@ -133,7 +134,8 @@ func TestAllIncludesMALStack38814Source(t *testing.T) {
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
 // osmer-rain-trieste, ptv-remote-italy-jobs, and transport
 // (arriva-udine, trieste-trasporti, apt-gorizia, trenitalia-disruptions) Flows
-// were removed, and the one-piece chapters Flow was added.
+// were removed, and the one-piece chapters and coached-essays Flows were
+// added.
 func TestAllExcludesRemovedSources(t *testing.T) {
 	want := map[string]bool{
 		"meltzer-5-star-matches": true,
@@ -144,6 +146,7 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 		"acloserlisten":          true,
 		"mal-stack-82158":        true,
 		"mal-stack-38814":        true,
+		"coached-essays":         true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -155,8 +158,8 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 8 {
-		t.Fatalf("len(sources.All()) = %d, want 8", len(all))
+	if len(all) != 9 {
+		t.Fatalf("len(sources.All()) = %d, want 9", len(all))
 	}
 }
 
@@ -182,6 +185,37 @@ func TestAllIncludesOnePieceSource(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("sources.All does not include the one-piece source")
+	}
+}
+
+func TestAllIncludesCoachedSource(t *testing.T) {
+	var found bool
+	for _, source := range sources.All() {
+		if source.ID != "coached-essays" {
+			continue
+		}
+		found = true
+		if source.URL != coached.PageURL {
+			t.Fatalf("coached source URL = %q, want %q", source.URL, coached.PageURL)
+		}
+		if source.Meta.Link != coached.HumanURL {
+			t.Fatalf("coached source link = %q, want %q", source.Meta.Link, coached.HumanURL)
+		}
+		if source.Meta.Title == "" || source.Meta.Description == "" {
+			t.Fatal("coached source metadata is incomplete")
+		}
+		if source.Flow.Version() != coached.ExtractVersion {
+			t.Fatalf("coached source flow version = %d, want %d", source.Flow.Version(), coached.ExtractVersion)
+		}
+		if source.Meta.ItemDescriptionsHTML {
+			t.Fatal("coached source has no descriptions to render as HTML")
+		}
+		if source.Interval != 0 || source.History != nil || source.EmitInitial || source.EmitVersionChanges {
+			t.Fatal("coached source must use the default interval and a plain current-state projection")
+		}
+	}
+	if !found {
+		t.Fatal("sources.All does not include the coached source")
 	}
 }
 

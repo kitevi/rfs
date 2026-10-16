@@ -25,6 +25,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/mal-stack-82158.html` — HTML view of the stack changes
 - `/feeds/mal-stack-38814.xml` — observed changes to The Next Sakuga Shows stack
 - `/feeds/mal-stack-38814.html` — HTML view of the stack changes
+- `/feeds/coached-essays.xml` — essays from Rohan Mahtani
+- `/feeds/coached-essays.html` — HTML view of the essays
 
 ### SeaDex
 
@@ -126,6 +128,22 @@ Metadata requests run sequentially and only for new albums. Any failed metadata
 request leaves the entire batch and checkpoint uncommitted for retry. No extra
 cache, credentials, database migration, or background worker is needed. The
 checkpoint retains album IDs across restarts; deleting the database resets it.
+
+### Coached essays
+
+`/feeds/coached-essays.xml` (or `.html`) publishes the All essays list from
+coached.com. The site serves no feed of its own. The essay index lists that
+catalog in a `<noscript>` fallback under the heading All essays; the same list
+is what the All essays tab shows once JavaScript runs. Newsletter issue pages
+are not items: each one is one current essay, one older essay, and other links.
+
+Essays on the index have titles and links but no dates, so an item's pubDate is
+the time rfs first saw it. The first poll dates the whole library at once. An
+essay added later gets a later date.
+
+The fallback is text to x/net/html, so the Flow parses it a second time and
+reads only the All essays section. A page that stops listing that section fails
+the poll, leaving the served feed untouched.
 
 ## Storage
 

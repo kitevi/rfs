@@ -3,6 +3,7 @@ package sources
 import (
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources/acloserlisten"
+	"github.com/kitevi/rfs/internal/sources/coached"
 	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/malstack"
 	"github.com/kitevi/rfs/internal/sources/malstack38814"
@@ -17,6 +18,16 @@ func All() []rfs.Source {
 		{ID: "acloserlisten", URL: acloserlisten.PageURL, Meta: rfs.SourceMeta{
 			Title: "A Closer Listen recommendations", Description: "New recommended releases, announced once per prose album name, Bandcamp album, standalone track, or YouTube video.", Link: acloserlisten.HumanURL,
 		}, Flow: acloserlisten.Flow{}},
+		{
+			ID:  "coached-essays",
+			URL: coached.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "Coached essays",
+				Description: "Essays by Rohan Mahtani on life and career strategy, announced once per essay.",
+				Link:        coached.HumanURL,
+			},
+			Flow: coached.Flow{},
+		},
 		{
 			ID:  "seadex",
 			URL: seadex.PageURL,
