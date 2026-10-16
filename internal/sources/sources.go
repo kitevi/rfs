@@ -11,10 +11,21 @@ import (
 	"github.com/kitevi/rfs/internal/sources/onepiece"
 	"github.com/kitevi/rfs/internal/sources/ptg"
 	"github.com/kitevi/rfs/internal/sources/seadex"
+	"github.com/kitevi/rfs/internal/sources/visionario"
 )
 
 func All() []rfs.Source {
 	return []rfs.Source{
+		{
+			ID:  "visionario",
+			URL: visionario.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "Visionario and Cinema Centrale",
+				Description: "New films at Visionario and Cinema Centrale in Udine, announced once per film.",
+				Link:        visionario.HumanURL,
+			},
+			Flow: visionario.Flow{},
+		},
 		{ID: "acloserlisten", URL: acloserlisten.PageURL, Meta: rfs.SourceMeta{
 			Title: "A Closer Listen recommendations", Description: "New recommended releases, announced once per prose album name, Bandcamp album, standalone track, or YouTube video.", Link: acloserlisten.HumanURL,
 		}, Flow: acloserlisten.Flow{}},

@@ -11,6 +11,7 @@ import (
 	"github.com/kitevi/rfs/internal/sources/malstack"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
 	"github.com/kitevi/rfs/internal/sources/ptg"
+	"github.com/kitevi/rfs/internal/sources/visionario"
 )
 
 func TestAllIncludesPTGSource(t *testing.T) {
@@ -134,7 +135,7 @@ func TestAllIncludesMALStack38814Source(t *testing.T) {
 // TestAllExcludesRemovedSources pins the registry after the tildes-comp,
 // osmer-rain-trieste, ptv-remote-italy-jobs, and transport
 // (arriva-udine, trieste-trasporti, apt-gorizia, trenitalia-disruptions) Flows
-// were removed, and the one-piece chapters and coached-essays Flows were
+// were removed, and the one-piece, coached-essays, and visionario Flows were
 // added.
 func TestAllExcludesRemovedSources(t *testing.T) {
 	want := map[string]bool{
@@ -147,6 +148,7 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 		"mal-stack-82158":        true,
 		"mal-stack-38814":        true,
 		"coached-essays":         true,
+		"visionario":             true,
 	}
 	all := sources.All()
 	for _, source := range all {
@@ -158,8 +160,45 @@ func TestAllExcludesRemovedSources(t *testing.T) {
 	for id := range want {
 		t.Fatalf("sources.All missing %q", id)
 	}
-	if len(all) != 9 {
-		t.Fatalf("len(sources.All()) = %d, want 9", len(all))
+	if len(all) != 10 {
+		t.Fatalf("len(sources.All()) = %d, want 10", len(all))
+	}
+}
+
+func TestAllIncludesVisionarioSource(t *testing.T) {
+	var found bool
+	for _, source := range sources.All() {
+		if source.ID != "visionario" {
+			continue
+		}
+		found = true
+		if source.URL != visionario.PageURL {
+			t.Fatalf("visionario source URL = %q, want %q", source.URL, visionario.PageURL)
+		}
+		if source.Meta.Link != visionario.HumanURL {
+			t.Fatalf("visionario source link = %q, want %q", source.Meta.Link, visionario.HumanURL)
+		}
+		if source.Meta.Title != "Visionario and Cinema Centrale" || source.Meta.Description == "" {
+			t.Fatalf("visionario source metadata = %#v", source.Meta)
+		}
+		if source.Meta.ItemDescriptionsHTML {
+			t.Fatal("visionario descriptions are plain text")
+		}
+		if source.Flow.Version() != visionario.ExtractVersion {
+			t.Fatalf("visionario source flow version = %d, want %d", source.Flow.Version(), visionario.ExtractVersion)
+		}
+		if _, ok := source.Flow.(rfs.AnnouncementFlow); !ok {
+			t.Fatalf("visionario flow %T does not implement rfs.AnnouncementFlow", source.Flow)
+		}
+		if _, ok := source.Flow.(rfs.AnnouncementIdentityFlow); !ok {
+			t.Fatalf("visionario flow %T does not implement rfs.AnnouncementIdentityFlow", source.Flow)
+		}
+		if source.Interval != 0 || source.History != nil || source.EmitInitial || source.EmitVersionChanges {
+			t.Fatal("visionario source must use the default interval and an announcement checkpoint")
+		}
+	}
+	if !found {
+		t.Fatal("sources.All does not include the visionario source")
 	}
 }
 

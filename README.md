@@ -27,6 +27,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/mal-stack-38814.html` — HTML view of the stack changes
 - `/feeds/coached-essays.xml` — essays from Rohan Mahtani
 - `/feeds/coached-essays.html` — HTML view of the essays
+- `/feeds/visionario.xml` — new films at Visionario and Cinema Centrale
+- `/feeds/visionario.html` — HTML view of the films
 
 ### SeaDex
 
@@ -144,6 +146,32 @@ essay added later gets a later date.
 The fallback is text to x/net/html, so the Flow parses it a second time and
 reads only the All essays section. A page that stops listing that section fails
 the poll, leaving the served feed untouched.
+
+### Visionario and Cinema Centrale
+
+`/feeds/visionario.xml` (or `.html`) publishes new films from the archive at
+visionario.movie/films/. Cinema Visionario and Cinema Centrale in Udine share
+that site. Centrale is closed for renovation, so current showtimes name
+Visionario; a showtime row that names Centrale is included in the description
+when one appears.
+
+The first successful poll remembers every film already on the archive page and
+publishes nothing. Later polls announce each new film page once. A prima
+visione or anteprima is an item. An evento is remembered and left unpublished.
+The item link is the film page. The description carries the opening date and
+any hall named on that page, for example `dal 15 Ott 2026, Visionario`. The
+feed date is when rfs first saw the page.
+
+A film page that is not a release or an event, or a release page with no
+opening date, fails the poll and leaves the checkpoint unchanged. The homepage
+day switcher is not used. The archive's first page holds about ten films, so a
+multi-day outage can let a film scroll off before the next poll.
+
+To verify live access and parsing without touching your database:
+
+```sh
+RFS_TEST_VISIONARIO_LIVE=1 go test ./internal/sources/visionario -run TestLive -v -count=1
+```
 
 ## Storage
 
