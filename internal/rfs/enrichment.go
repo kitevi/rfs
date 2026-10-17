@@ -175,12 +175,13 @@ func (p Poller) resolveIdentity(ctx context.Context, resolver AnnouncementIdenti
 // batch publishes, and the checkpoint never books the skipped item, so the next
 // poll retries it. A Flow that renames an identity is a contract violation and
 // stays fatal.
-func (p Poller) enrichAnnouncements(ctx context.Context, sourceID string, flow Flow, announcements []ExtractedItem, resolved map[string]ExtractedItem) (published, quarantined []ExtractedItem, err error) {
+func (p Poller) enrichAnnouncements(ctx context.Context, sourceID string, flow Flow, announcements []ExtractedItem, resolved map[string]ExtractedItem) ([]ExtractedItem, []ExtractedItem, error) {
 	enriched, ok := flow.(EnrichedAnnouncementFlow)
 	if !ok || len(announcements) == 0 {
 		return announcements, nil, nil
 	}
-	published = make([]ExtractedItem, 0, len(announcements))
+	published := make([]ExtractedItem, 0, len(announcements))
+	var quarantined []ExtractedItem
 	for _, item := range announcements {
 		if cached, ok := resolved[item.GUID]; ok {
 			published = append(published, cached)

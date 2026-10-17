@@ -28,11 +28,9 @@ type Poller struct {
 	Store   SnapshotStore
 	Clock   Clock
 
-	// SecondaryFetch, when set, runs once before every follow-up request a
-	// poll makes: further collection pages, identity pages, and metadata
-	// queries. The caller spaces the source's own fetch; follow-ups happen
-	// inside the same poll, so routing them through the same guard keeps one
-	// poll inside the domain's spacing budget instead of bursting.
+	// SecondaryFetch, when set, runs before every follow-up request a poll
+	// makes (further collection pages, identity pages, metadata queries), so
+	// one poll stays inside its domain's spacing budget instead of bursting.
 	SecondaryFetch func(context.Context, string) error
 }
 

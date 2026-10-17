@@ -43,12 +43,11 @@ func safeHTML(fragment string) string {
 }
 
 func writeSafeHTML(b *strings.Builder, node *html.Node) {
-	switch node.Type {
-	case html.TextNode:
+	if node.Type == html.TextNode {
 		b.WriteString(stdhtml.EscapeString(node.Data))
 		return
-	case html.ElementNode:
-	default:
+	}
+	if node.Type != html.ElementNode {
 		return
 	}
 

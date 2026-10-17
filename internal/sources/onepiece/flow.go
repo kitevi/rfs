@@ -81,11 +81,9 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 		}
 		heading, subtitle, err := chapterText(anchor, number)
 		if err != nil {
-			// One chapter whose heading disagrees with its link must not take
-			// the archive down with it: the archive lists every chapter back to
-			// the first, so a single odd anchor would keep failing every poll
-			// and freeze the feed for good. The chapter is skipped and retried
-			// on the next poll, when the page lists it correctly.
+			// The archive lists every chapter back to the first, so rejecting
+			// the page over one odd anchor would fail every later poll. Skip it
+			// and retry the chapter on the next poll.
 			log.Printf("onepiece: skipping chapter %d: %v", number, err)
 			continue
 		}

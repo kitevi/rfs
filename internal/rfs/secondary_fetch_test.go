@@ -28,8 +28,8 @@ func (paginatedStub) Pagination(page Page) (PageInfo, error) {
 	return info, nil
 }
 
-func (stub paginatedStub) Extract(page Page) ([]ExtractedItem, error) {
-	info, err := stub.Pagination(page)
+func (paginatedStub) Extract(page Page) ([]ExtractedItem, error) {
+	info, err := (paginatedStub{}).Pagination(page)
 	if err != nil {
 		return nil, err
 	}

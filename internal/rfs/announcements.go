@@ -71,15 +71,15 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 	if err != nil {
 		return pollFailure(err)
 	}
-	announcements, decision, err := p.decideAnnouncements(ctx, source.ID, flow, checkpoint, current)
+	decision, err := p.decideAnnouncements(ctx, source.ID, flow, checkpoint, current)
 	if err != nil {
 		return pollFailure(err)
 	}
 	if len(decision.Checkpoint) == 0 {
 		return PollResult{}, fmt.Errorf("poll %s: announcement flow returned an empty checkpoint", source.ID)
 	}
-	items := make([]Item, 0, len(announcements))
-	for _, announcement := range announcements {
+	items := make([]Item, 0, len(decision.Announcements))
+	for _, announcement := range decision.Announcements {
 		if announcement.GUID == "" {
 			return PollResult{}, fmt.Errorf("poll %s: announcement without a GUID", source.ID)
 		}
@@ -112,31 +112,32 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 // from the same checkpoint, so the checkpoint never books an item the feed did
 // not publish and the next poll retries it. Each pass either stops or removes at
 // least one item, so the bound is the observation size.
-func (p Poller) decideAnnouncements(ctx context.Context, sourceID string, flow AnnouncementFlow, checkpoint json.RawMessage, current []ExtractedItem) ([]ExtractedItem, AnnouncementDecision, error) {
+func (p Poller) decideAnnouncements(ctx context.Context, sourceID string, flow AnnouncementFlow, checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error) {
 	at := p.now()
 	resolved := make(map[string]ExtractedItem, len(current))
 	for range len(current) + 1 {
 		decision, err := evaluateAnnouncements(flow, at, checkpoint, current)
 		if err != nil {
-			return nil, AnnouncementDecision{}, err
+			return AnnouncementDecision{}, err
 		}
 		if len(decision.Announcements) == 0 {
-			return nil, decision, nil
+			return decision, nil
 		}
-		announcements, quarantined, err := p.enrichAnnouncements(ctx, sourceID, flow, decision.Announcements, resolved)
+		published, quarantined, err := p.enrichAnnouncements(ctx, sourceID, flow, decision.Announcements, resolved)
 		if err != nil {
-			return nil, AnnouncementDecision{}, err
+			return AnnouncementDecision{}, err
 		}
+		decision.Announcements = published
 		if len(quarantined) == 0 {
-			return announcements, decision, nil
+			return decision, nil
 		}
 		pruned := withoutItems(current, quarantined)
 		if len(pruned) == len(current) {
-			return nil, AnnouncementDecision{}, fmt.Errorf("poll %s: a quarantined announcement is not part of the observation", sourceID)
+			return AnnouncementDecision{}, fmt.Errorf("poll %s: a quarantined announcement is not in the observation", sourceID)
 		}
 		current = pruned
 	}
-	return nil, AnnouncementDecision{}, fmt.Errorf("poll %s: every observed item was quarantined", sourceID)
+	return AnnouncementDecision{}, fmt.Errorf("poll %s: every observed item was quarantined", sourceID)
 }
 
 // evaluateAnnouncements hands a clock-aware Flow the poll instant; the instant
