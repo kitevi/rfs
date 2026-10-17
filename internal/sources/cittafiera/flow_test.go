@@ -124,6 +124,18 @@ func TestHeldFilmThatLeavesTheHomepageIsDropped(t *testing.T) {
 	}
 }
 
+func TestFilmPageSkipsABlankDayQuery(t *testing.T) {
+	item := rfs.ExtractedItem{GUID: guidPrefix + "2866", Title: "Coyote Vs Acme", Link: filmURL("2866")}
+	page := rfs.Page(`<a href="/scheda-film?d=+&id_pro=2866">blank</a>` + string(filmPage("2866", "Dave Green", "01:44", "2026-10-21")))
+	resolved, err := (Flow{}).ResolveIdentity(page, item)
+	if err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if resolved.GUID != item.GUID || !strings.Contains(resolved.Metadata, "2026-10-21") {
+		t.Fatalf("resolved = %#v, want the October day", resolved)
+	}
+}
+
 func TestFilmPageWithoutADayFails(t *testing.T) {
 	item := rfs.ExtractedItem{GUID: guidPrefix + "2866", Title: "Coyote Vs Acme", Link: filmURL("2866")}
 	page := rfs.Page(`<p><strong>Regista: </strong>Dave Green</p><p><strong>Durata: </strong>01:44</p>`)

@@ -57,7 +57,9 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 		}
 	}
 	walk(doc)
-
+	if len(items) == 0 {
+		return nil, fmt.Errorf("meltzer: no 2020s matches")
+	}
 	return items, nil
 }
 

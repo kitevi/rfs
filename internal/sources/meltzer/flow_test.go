@@ -103,6 +103,25 @@ func TestFlowHandlesWikipediaRowspanDates(t *testing.T) {
 	}
 }
 
+func TestFlowRejectsAPageWithout2020sMatches(t *testing.T) {
+	doc := parseHTML(t, `
+<html><body>
+<h3>2010s</h3>
+<table class="wikitable">
+  <tr><th>Date</th><th>Match</th><th>Promotion</th><th>Event</th><th>Rating</th></tr>
+  <tr><td>August 31, 2019</td><td>Walter vs. Tyler Bate</td><td>WWE</td><td>NXT UK</td><td>5.25</td></tr>
+</table>
+</body></html>`)
+
+	items, err := (meltzer.Flow{}).Extract(doc)
+	if err == nil || !strings.Contains(err.Error(), "no 2020s matches") {
+		t.Fatalf("error = %v, want a missing 2020s table", err)
+	}
+	if len(items) != 0 {
+		t.Fatalf("items = %#v, want none", items)
+	}
+}
+
 func TestFlowIgnoresOtherDecadeTables(t *testing.T) {
 	doc := parseHTML(t, `
 <html><body>

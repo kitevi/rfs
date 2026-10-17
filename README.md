@@ -25,6 +25,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/mal-stack-82158.html` — HTML view of the stack changes
 - `/feeds/mal-stack-38814.xml` — observed changes to The Next Sakuga Shows stack
 - `/feeds/mal-stack-38814.html` — HTML view of the stack changes
+- `/feeds/acloserlisten.xml` — new recommended releases from A Closer Listen
+- `/feeds/acloserlisten.html` — HTML view of the recommendations
 - `/feeds/coached-essays.xml` — essays from Rohan Mahtani
 - `/feeds/coached-essays.html` — HTML view of the essays
 - `/feeds/visionario.xml` — new films at Visionario and Cinema Centrale

@@ -306,10 +306,11 @@ func screeningDays(doc *html.Node) ([]time.Time, error) {
 			continue
 		}
 		raw := parsed.Query().Get("d")
-		if raw == "" {
+		fields := strings.Fields(raw)
+		if len(fields) == 0 {
 			continue
 		}
-		day := strings.Fields(raw)[0]
+		day := fields[0]
 		if seen[day] {
 			continue
 		}

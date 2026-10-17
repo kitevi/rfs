@@ -98,6 +98,9 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow Flow, curre
 	if err != nil {
 		return PollResult{}, err
 	}
+	if len(items) == 0 {
+		return PollResult{Status: PollUnchanged}, nil
+	}
 	return PollResult{Status: PollUpdated}, nil
 }
 

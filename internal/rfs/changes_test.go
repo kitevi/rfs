@@ -55,8 +55,12 @@ func TestPollerPublishesFirstObservationWhenInitialEmissionEnabled(t *testing.T)
 	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow, EmitInitial: true}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
 
-	if _, err := poller.Poll(ctx, source); err != nil {
+	first, err := poller.Poll(ctx, source)
+	if err != nil {
 		t.Fatalf("first poll: %v", err)
+	}
+	if first.Status != PollUpdated {
+		t.Fatalf("first poll status = %v, want updated", first.Status)
 	}
 	items, err := store.LoadSnapshot(ctx, "notices")
 	if err != nil {
@@ -68,8 +72,12 @@ func TestPollerPublishesFirstObservationWhenInitialEmissionEnabled(t *testing.T)
 
 	// A restart re-polls the same unchanged observation through a new Poller.
 	restarted := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
-	if _, err := restarted.Poll(ctx, source); err != nil {
+	second, err := restarted.Poll(ctx, source)
+	if err != nil {
 		t.Fatalf("restart poll: %v", err)
+	}
+	if second.Status != PollUnchanged {
+		t.Fatalf("restart poll status = %v, want unchanged", second.Status)
 	}
 	items, err = store.LoadSnapshot(ctx, "notices")
 	if err != nil {
