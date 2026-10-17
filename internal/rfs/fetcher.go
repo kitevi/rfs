@@ -36,13 +36,25 @@ type FetchResult struct {
 	RetryAfter time.Duration
 }
 
+// maxFetchBodyBytes bounds one fetched page. rfs holds whole pages in memory,
+// so an oversized or never-ending response must fail the poll instead of
+// growing without limit; a rejected fetch leaves the stored snapshot intact.
+const maxFetchBodyBytes int64 = 16 << 20
+
+// defaultFetchTimeout bounds one request made through the default client. Polls
+// carry their own deadline, but a single stalled connection should not consume
+// it, and every follow-up request inside a poll needs the same bound.
+const defaultFetchTimeout = 30 * time.Second
+
+var defaultHTTPClient = &http.Client{Timeout: defaultFetchTimeout}
+
 type HTTPFetcher struct {
 	client *http.Client
 }
 
 func NewHTTPFetcher(client *http.Client) HTTPFetcher {
 	if client == nil {
-		client = http.DefaultClient
+		client = defaultHTTPClient
 	}
 	return HTTPFetcher{client: client}
 }
@@ -81,19 +93,29 @@ func (f HTTPFetcher) fetch(req *http.Request, cache FetchCache) (FetchResult, er
 	}
 	defer resp.Body.Close()
 
+	etag := resp.Header.Get("ETag")
+	lastModified := resp.Header.Get("Last-Modified")
 	result := FetchResult{Cache: cache}
-	if etag := resp.Header.Get("ETag"); etag != "" {
+	if etag != "" {
 		result.Cache.ETag = etag
 	}
-	if lastModified := resp.Header.Get("Last-Modified"); lastModified != "" {
+	if lastModified != "" {
 		result.Cache.LastModified = lastModified
 	}
 
 	switch resp.StatusCode {
 	case http.StatusOK:
-		body, err := io.ReadAll(resp.Body)
+		// A 200 describes the body it just returned, so its validators replace
+		// the stored ones outright. Keeping a validator the response omitted
+		// would pin every later request to a representation the server no
+		// longer serves: a matching If-None-Match then freezes the snapshot.
+		result.Cache.ETag, result.Cache.LastModified = etag, lastModified
+		body, err := io.ReadAll(io.LimitReader(resp.Body, maxFetchBodyBytes+1))
 		if err != nil {
 			return FetchResult{}, err
+		}
+		if int64(len(body)) > maxFetchBodyBytes {
+			return FetchResult{}, fmt.Errorf("fetch %s: body exceeds %d byte limit", req.URL, maxFetchBodyBytes)
 		}
 		result.Status = FetchModified
 		result.Page = Page(body)

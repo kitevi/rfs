@@ -65,6 +65,51 @@ func logNextPollCycle(started time.Time, interval time.Duration, sources []rfs.S
 	log.Printf("next poll cycle in %s at %s (%s)", remaining, next.Format("15:04:05"), pollCycleDetails(sources))
 }
 
+// Connection timeouts bound how long one client may hold a socket while
+// sending nothing useful. The listener is reachable on every interface, so
+// without them a handful of slow or silent clients can pin every goroutine and
+// file descriptor the process has and take all feeds down with it.
+const (
+	defaultReadHeaderTimeout = 10 * time.Second
+	defaultReadTimeout       = 60 * time.Second
+	defaultWriteTimeout      = 60 * time.Second
+	defaultIdleTimeout       = 120 * time.Second
+)
+
+// serverTimeouts overrides the connection timeouts; a zero field keeps the
+// production default. It exists so a test can shorten a timeout and watch the
+// server enforce it.
+type serverTimeouts struct {
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
+}
+
+// newHTTPServer builds the feed server with bounded connection lifetimes.
+func newHTTPServer(addr string, handler http.Handler, timeouts serverTimeouts) *http.Server {
+	if timeouts.ReadHeaderTimeout <= 0 {
+		timeouts.ReadHeaderTimeout = defaultReadHeaderTimeout
+	}
+	if timeouts.ReadTimeout <= 0 {
+		timeouts.ReadTimeout = defaultReadTimeout
+	}
+	if timeouts.WriteTimeout <= 0 {
+		timeouts.WriteTimeout = defaultWriteTimeout
+	}
+	if timeouts.IdleTimeout <= 0 {
+		timeouts.IdleTimeout = defaultIdleTimeout
+	}
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: timeouts.ReadHeaderTimeout,
+		ReadTimeout:       timeouts.ReadTimeout,
+		WriteTimeout:      timeouts.WriteTimeout,
+		IdleTimeout:       timeouts.IdleTimeout,
+	}
+}
+
 func main() {
 	addr := flag.String("addr", ":14298", "HTTP listen address")
 	interval := flag.Duration("interval", time.Hour, "default source polling interval")
@@ -105,15 +150,16 @@ func main() {
 
 	registeredSources := sources.All()
 	pollSchedules := buildPollSchedules(registeredSources, *interval)
-	poller := rfs.Poller{
-		Fetcher: rfs.NewHTTPFetcher(nil),
-		Store:   store,
-	}
 	gate := rfs.NewDomainGate(nil, rfs.DomainGateConfig{
 		MinSpacing:     *domainSpacing,
 		InitialBackoff: time.Minute,
 		MaxBackoff:     time.Hour,
 	})
+	poller := rfs.Poller{
+		Fetcher:        rfs.NewHTTPFetcher(nil),
+		Store:          store,
+		SecondaryFetch: gateGuard(gate),
+	}
 
 	// Self-update (ADR 0004) is independent of source polling: a deployed build
 	// checks immediately and then on its own cadence with a short deadline. A
@@ -167,10 +213,7 @@ func main() {
 		close(pollsDone)
 	}()
 
-	server := &http.Server{
-		Addr:    *addr,
-		Handler: rfs.NewHTTPHandler(store, registeredSources, buildInfo),
-	}
+	server := newHTTPServer(*addr, rfs.NewHTTPHandler(store, registeredSources, buildInfo), serverTimeouts{})
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
@@ -217,6 +260,19 @@ func main() {
 		if err := syscall.Exec(reexecPath, os.Args, os.Environ()); err != nil {
 			log.Fatalf("self-update: re-exec %s: %v", reexecPath, err)
 		}
+	}
+}
+
+// gateGuard adapts the domain gate to the poller's follow-up fetch hook, so a
+// collection page, identity page, or metadata request shares the same per-domain
+// spacing as the source's own fetch instead of bursting past it.
+func gateGuard(gate *rfs.DomainGate) func(context.Context, string) error {
+	return func(ctx context.Context, rawURL string) error {
+		parsed, err := url.Parse(rawURL)
+		if err != nil {
+			return err
+		}
+		return gate.Acquire(ctx, parsed.Hostname())
 	}
 }
 

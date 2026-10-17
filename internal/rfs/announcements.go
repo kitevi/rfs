@@ -67,25 +67,16 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 	if err != nil {
 		return PollResult{}, err
 	}
-	current, err = p.resolveAnnouncementIdentities(ctx, flow, checkpoint, current)
+	current, err = p.resolveAnnouncementIdentities(ctx, source.ID, flow, checkpoint, current)
 	if err != nil {
 		return pollFailure(err)
 	}
-	var decision AnnouncementDecision
-	if dated, ok := flow.(DatedAnnouncementFlow); ok {
-		decision, err = dated.EvaluateAt(p.now(), checkpoint, current)
-	} else {
-		decision, err = flow.Evaluate(checkpoint, current)
-	}
+	announcements, decision, err := p.decideAnnouncements(ctx, source.ID, flow, checkpoint, current)
 	if err != nil {
 		return pollFailure(err)
 	}
 	if len(decision.Checkpoint) == 0 {
 		return PollResult{}, fmt.Errorf("poll %s: announcement flow returned an empty checkpoint", source.ID)
-	}
-	announcements, err := p.enrichAnnouncements(ctx, flow, decision.Announcements)
-	if err != nil {
-		return pollFailure(err)
 	}
 	items := make([]Item, 0, len(announcements))
 	for _, announcement := range announcements {
@@ -113,6 +104,48 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 		return PollResult{Status: PollUnchanged}, nil
 	}
 	return PollResult{Status: PollUpdated}, nil
+}
+
+// decideAnnouncements derives the announcements for one poll and resolves
+// their metadata before anything commits. An announcement whose metadata cannot
+// be fetched is quarantined out of the observation and the decision is re-derived
+// from the same checkpoint, so the checkpoint never books an item the feed did
+// not publish and the next poll retries it. Each pass either stops or removes at
+// least one item, so the bound is the observation size.
+func (p Poller) decideAnnouncements(ctx context.Context, sourceID string, flow AnnouncementFlow, checkpoint json.RawMessage, current []ExtractedItem) ([]ExtractedItem, AnnouncementDecision, error) {
+	at := p.now()
+	resolved := make(map[string]ExtractedItem, len(current))
+	for range len(current) + 1 {
+		decision, err := evaluateAnnouncements(flow, at, checkpoint, current)
+		if err != nil {
+			return nil, AnnouncementDecision{}, err
+		}
+		if len(decision.Announcements) == 0 {
+			return nil, decision, nil
+		}
+		announcements, quarantined, err := p.enrichAnnouncements(ctx, sourceID, flow, decision.Announcements, resolved)
+		if err != nil {
+			return nil, AnnouncementDecision{}, err
+		}
+		if len(quarantined) == 0 {
+			return announcements, decision, nil
+		}
+		pruned := withoutItems(current, quarantined)
+		if len(pruned) == len(current) {
+			return nil, AnnouncementDecision{}, fmt.Errorf("poll %s: a quarantined announcement is not part of the observation", sourceID)
+		}
+		current = pruned
+	}
+	return nil, AnnouncementDecision{}, fmt.Errorf("poll %s: every observed item was quarantined", sourceID)
+}
+
+// evaluateAnnouncements hands a clock-aware Flow the poll instant; the instant
+// is fixed for the whole poll so a re-derived decision cannot drift.
+func evaluateAnnouncements(flow AnnouncementFlow, at time.Time, checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error) {
+	if dated, ok := flow.(DatedAnnouncementFlow); ok {
+		return dated.EvaluateAt(at, checkpoint, current)
+	}
+	return flow.Evaluate(checkpoint, current)
 }
 
 func (s *SQLiteStore) LoadAnnouncementCheckpoint(ctx context.Context, sourceID string) (json.RawMessage, error) {

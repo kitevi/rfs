@@ -108,7 +108,9 @@ func RenderHTMLFeed(sourceID string, meta SourceMeta, items []Item, build BuildI
 	for _, item := range items {
 		var description any = item.Description
 		if meta.ItemDescriptionsHTML {
-			description = template.HTML(item.Description)
+			// Flows build this markup and escape upstream text; the allowlist
+			// keeps a Flow mistake from becoming a script sink.
+			description = template.HTML(safeHTML(item.Description))
 		}
 		dateLabel := item.DateLabel
 		if dateLabel == "" {

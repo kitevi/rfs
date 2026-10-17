@@ -199,32 +199,37 @@ func TestAnnouncementEnrichmentPublishesResolvedItemsOnlyOnce(t *testing.T) {
 	}
 }
 
-func TestAnnouncementEnrichmentFailurePublishesNothing(t *testing.T) {
+func TestAnnouncementEnrichmentQuarantinesOneFailedItem(t *testing.T) {
 	ctx := t.Context()
 	plan := &metadataPlan{failAt: 2}
 	_, source, poller, store, requests := newAlbumPoller(t, plan)
 
-	if _, err := poller.Poll(ctx, source); err == nil {
-		t.Fatal("poll with a failing player did not fail")
+	result, err := poller.Poll(ctx, source)
+	if err != nil {
+		t.Fatalf("one failing player must not fail the poll: %v", err)
 	}
-	if stored := loadAnnouncementFeed(t, store, source.ID); len(stored) != 0 {
-		t.Fatalf("failed poll published %#v", stored)
+	if result.Status != PollUpdated {
+		t.Fatalf("poll = %v, want the resolvable album published", result.Status)
+	}
+	stored := loadAnnouncementFeed(t, store, source.ID)
+	if len(stored) != 1 || stored["album:1"].Title != "Album 1" {
+		t.Fatalf("stored %#v, want only the resolvable album", stored)
 	}
 	checkpoint, err := store.LoadAnnouncementCheckpoint(ctx, source.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(checkpoint) != 0 {
-		t.Fatalf("failed poll advanced the checkpoint: %s", checkpoint)
+	if !strings.Contains(string(checkpoint), "album:1") || strings.Contains(string(checkpoint), "album:2") {
+		t.Fatalf("checkpoint = %s, want the published album booked and the quarantined one left for retry", checkpoint)
 	}
 
 	plan.failAt = 0
 	if _, err := poller.Poll(ctx, source); err != nil {
 		t.Fatal(err)
 	}
-	stored := loadAnnouncementFeed(t, store, source.ID)
-	if len(stored) != 2 || stored["album:1"].Title != "Album 1" {
-		t.Fatalf("retry stored %#v, want both albums resolved", stored)
+	stored = loadAnnouncementFeed(t, store, source.ID)
+	if len(stored) != 2 || stored["album:2"].Title != "Album 2" {
+		t.Fatalf("retry stored %#v, want the quarantined album published after its player recovered", stored)
 	}
 	attempts := 0
 	for _, request := range requests() {
@@ -232,8 +237,8 @@ func TestAnnouncementEnrichmentFailurePublishesNothing(t *testing.T) {
 			attempts++
 		}
 	}
-	if attempts != 2 {
-		t.Fatalf("first album was resolved %d times, want a retry after the failed batch", attempts)
+	if attempts != 1 {
+		t.Fatalf("first album was resolved %d times, want it resolved once and never refetched", attempts)
 	}
 }
 

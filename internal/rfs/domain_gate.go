@@ -25,6 +25,10 @@ type DomainGate struct {
 }
 
 type domainGateState struct {
+	// lane serializes whole polls for one domain. It is separate from lock so a
+	// running poll can book follow-up slots (Acquire) without deadlocking.
+	lane sync.Mutex
+	// lock guards the spacing fields below.
 	lock        sync.Mutex
 	nextAllowed time.Time
 	backoff     time.Duration
@@ -52,24 +56,54 @@ func NewDomainGate(clock GateClock, config DomainGateConfig) *DomainGate {
 // domains can run independently; calls for the same domain are serialized.
 func (g *DomainGate) Run(ctx context.Context, domain string, action func() (PollResult, error)) (PollResult, error) {
 	state := g.stateFor(domain)
-	state.lock.Lock()
-	defer state.lock.Unlock()
+	state.lane.Lock()
+	defer state.lane.Unlock()
 
-	if err := g.waitLocked(ctx, state); err != nil {
+	if err := g.waitForSlot(ctx, state); err != nil {
 		return PollResult{}, err
 	}
 
 	result, err := action()
 	if err != nil {
-		g.recordThrottleLocked(state, 0)
+		// A failure is rfs's problem (a layout change, a decode error, a broken
+		// page), not upstream asking for less traffic. Applying the same
+		// spacing a success gets keeps the domain polite without inflating the
+		// throttle backoff, which would delay the retry that fixes it.
+		g.recordFailure(state)
 		return result, err
 	}
 	if result.Status == PollThrottled {
-		g.recordThrottleLocked(state, result.RetryAfter)
+		g.recordThrottle(state, result.RetryAfter)
 		return result, nil
 	}
-	g.recordSuccessLocked(state)
+	g.recordSuccess(state)
 	return result, nil
+}
+
+// Acquire blocks until the domain's next allowed instant and books that slot,
+// so consecutive follow-up requests to one domain stay spaced even though they
+// are not whole polls. It takes no lane, so it is safe inside a Run action.
+func (g *DomainGate) Acquire(ctx context.Context, domain string) error {
+	state := g.stateFor(domain)
+	state.lock.Lock()
+	defer state.lock.Unlock()
+
+	if err := g.waitLocked(ctx, state); err != nil {
+		return err
+	}
+	booked := g.clock.Now().Add(g.config.MinSpacing)
+	if booked.After(state.nextAllowed) {
+		state.nextAllowed = booked
+	}
+	return nil
+}
+
+// waitForSlot waits without holding the lane's action lock, so Acquire and the
+// record helpers can take the spacing lock in turn.
+func (g *DomainGate) waitForSlot(ctx context.Context, state *domainGateState) error {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+	return g.waitLocked(ctx, state)
 }
 
 func (g *DomainGate) waitLocked(ctx context.Context, state *domainGateState) error {
@@ -84,12 +118,33 @@ func (g *DomainGate) waitLocked(ctx context.Context, state *domainGateState) err
 	}
 }
 
-func (g *DomainGate) recordSuccessLocked(state *domainGateState) {
-	state.backoff = 0
-	state.nextAllowed = g.clock.Now().Add(g.config.MinSpacing)
+// recordFailure books the normal spacing after a failed call and leaves the
+// throttle backoff untouched, so only real throttling escalates it.
+func (g *DomainGate) recordFailure(state *domainGateState) {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+
+	nextAllowed := g.clock.Now().Add(g.config.MinSpacing)
+	if nextAllowed.After(state.nextAllowed) {
+		state.nextAllowed = nextAllowed
+	}
 }
 
-func (g *DomainGate) recordThrottleLocked(state *domainGateState, retryAfter time.Duration) {
+func (g *DomainGate) recordSuccess(state *domainGateState) {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+
+	state.backoff = 0
+	nextAllowed := g.clock.Now().Add(g.config.MinSpacing)
+	if nextAllowed.After(state.nextAllowed) {
+		state.nextAllowed = nextAllowed
+	}
+}
+
+func (g *DomainGate) recordThrottle(state *domainGateState, retryAfter time.Duration) {
+	state.lock.Lock()
+	defer state.lock.Unlock()
+
 	delay := retryAfter
 	if delay <= 0 {
 		delay = g.nextBackoff(state.backoff)

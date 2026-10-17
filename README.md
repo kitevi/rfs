@@ -73,10 +73,13 @@ fetches chapter pages or images, and it does not repair links that a publisher
 later breaks.
 
 The archive page lists every chapter back to chapter 1 and is fetched in full
-each poll. Failures, throttling, and unrecognized pages leave the checkpoint and
-the served feed untouched for retry on the next poll. Deduplication lives in the
-database: deleting it re-initializes the feed with the newest chapter. See
-`docs/adr/0010-announcement-checkpoints.md`.
+each poll. A page that cannot be read, and throttling, leave the checkpoint and
+the served feed untouched for retry on the next poll. A single chapter whose
+link and heading disagree is skipped instead of rejecting the page, so one odd
+anchor cannot freeze the whole feed; that chapter is retried on the next poll.
+Deduplication lives in the database: deleting it re-initializes the feed with
+the newest chapter. See `docs/adr/0010-announcement-checkpoints.md` and
+`docs/adr/0011-quarantine-unreadable-items.md`.
 
 To verify live access and parsing without touching your database:
 
@@ -130,10 +133,13 @@ Titles come from Bandcamp player metadata; links lead to the recommendations
 page.
 
 The source reads the public WordPress API rather than challenge-protected HTML.
-Metadata requests run sequentially and only for new albums. Any failed metadata
-request leaves the entire batch and checkpoint uncommitted for retry. No extra
-cache, credentials, database migration, or background worker is needed. The
-checkpoint retains album IDs across restarts; deleting the database resets it.
+Metadata requests run sequentially and only for new albums. A release whose
+metadata cannot be read is quarantined: the rest of the batch publishes, the
+checkpoint does not record the skipped release, and the next poll retries it. A
+metadata service that throttles rfs still stops the whole poll, so Retry-After
+reaches the domain gate. No extra cache, credentials, database migration, or
+background worker is needed. The checkpoint retains album IDs across restarts;
+deleting the database resets it.
 
 ### Coached essays
 
@@ -167,9 +173,10 @@ any hall named on that page, for example `dal 15 Ott 2026, Visionario`. The
 feed date is when rfs first saw the page.
 
 A film page that is not a release or an event, or a release page with no
-opening date, fails the poll and leaves the checkpoint unchanged. The homepage
-day switcher is not used. The archive's first page holds about ten films, so a
-multi-day outage can let a film scroll off before the next poll.
+opening date, is quarantined: the other films in the same poll still publish and
+the unreadable film is retried on the next poll. The homepage day switcher is
+not used. The archive's first page holds about ten films, so a multi-day outage
+can let a film scroll off before the next poll.
 
 To verify live access and parsing without touching your database:
 
@@ -192,8 +199,9 @@ out until 2 December. The item link is the film page. The description is the
 first day plus the director and duration, for example `16 Dic 2026, Dave Green,
 01:44`. The 35MM badge is not part of the title.
 
-A film page with no screening day fails the poll and leaves the checkpoint
-unchanged. A held film that leaves the homepage is forgotten. The daily
+A film page with no screening day is quarantined: every other film in the same
+poll is still classified and announced, and the unreadable film is retried on
+the next poll. A held film that leaves the homepage is forgotten. The daily
 schedule page is not the source: it shows one day at a time.
 
 To verify live access and parsing without touching your database:

@@ -61,11 +61,25 @@ func TestExtractRejectsPagesWithoutChapters(t *testing.T) {
 	}
 }
 
-func TestExtractRejectsChapterHeadingMismatch(t *testing.T) {
-	page := rfs.Page(`<html><body><a href="/chapters/1/one-piece-chapter-5"><div>One Piece Chapter 6</div></a></body></html>`)
-	_, err := Flow{}.Extract(page)
-	if err == nil || !strings.Contains(err.Error(), "does not match") {
-		t.Fatalf("error = %v, want a heading mismatch rejection", err)
+func TestExtractSkipsAChapterWhoseHeadingDisagreesWithItsLink(t *testing.T) {
+	page := rfs.Page(`<html><body>
+<a href="/chapters/1/one-piece-chapter-5"><div>One Piece Chapter 5</div></a>
+<a href="/chapters/2/one-piece-chapter-6"><div>One Piece 6</div></a>
+<a href="/chapters/3/one-piece-chapter-7"><div>One Piece Chapter 7</div></a>
+</body></html>`)
+	items, err := Flow{}.Extract(page)
+	if err != nil {
+		t.Fatalf("one unparseable chapter must not reject the whole archive: %v", err)
+	}
+	if len(items) != 2 || items[0].GUID != "one-piece:chapter:5" || items[1].GUID != "one-piece:chapter:7" {
+		t.Fatalf("items = %#v, want chapters 5 and 7 with chapter 6 skipped", items)
+	}
+}
+
+func TestExtractRejectsAPageWhoseChaptersAllDisagree(t *testing.T) {
+	page := rfs.Page(`<html><body><a href="/chapters/1/one-piece-chapter-5"><div>One Piece 6</div></a></body></html>`)
+	if _, err := (Flow{}).Extract(page); err == nil {
+		t.Fatal("a page whose only chapter disagrees with its link must still fail closed")
 	}
 }
 

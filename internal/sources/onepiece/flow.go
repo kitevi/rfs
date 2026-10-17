@@ -11,6 +11,7 @@ package onepiece
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/url"
 	"regexp"
 	"sort"
@@ -80,7 +81,13 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 		}
 		heading, subtitle, err := chapterText(anchor, number)
 		if err != nil {
-			return nil, err
+			// One chapter whose heading disagrees with its link must not take
+			// the archive down with it: the archive lists every chapter back to
+			// the first, so a single odd anchor would keep failing every poll
+			// and freeze the feed for good. The chapter is skipped and retried
+			// on the next poll, when the page lists it correctly.
+			log.Printf("onepiece: skipping chapter %d: %v", number, err)
+			continue
 		}
 		seen[number] = true
 		items = append(items, rfs.ExtractedItem{

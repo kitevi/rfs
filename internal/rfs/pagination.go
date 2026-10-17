@@ -38,7 +38,11 @@ func (p Poller) extractPages(ctx context.Context, source Source, flow PaginatedF
 			query := base.Query()
 			query.Set("page", strconv.Itoa(number))
 			base.RawQuery = query.Encode()
-			fetched, err := p.Fetcher.Fetch(ctx, base.String(), FetchCache{})
+			target := base.String()
+			if err := p.beforeSecondaryFetch(ctx, target); err != nil {
+				return nil, err
+			}
+			fetched, err := p.Fetcher.Fetch(ctx, target, FetchCache{})
 			if err != nil {
 				return nil, err
 			}

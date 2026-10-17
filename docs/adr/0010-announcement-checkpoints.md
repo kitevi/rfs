@@ -36,6 +36,9 @@ revision-based GUID makes retries depend on a successful commit.
 
 ## Consequences
 
+An item the poll cannot read is quarantined rather than aborting the poll, so the
+checkpoint does not advance over it and the next poll retries it (ADR 0011).
+
 What is new is decided by the checkpoint, not by what the current page still
 shows, so archive gaps heal on the next successful poll. Losing the database
 resets the baseline: the next observation re-initializes and announces only the

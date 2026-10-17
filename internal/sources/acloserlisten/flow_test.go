@@ -576,11 +576,16 @@ func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testin
 	}
 	fetcher.pages[PageURL] = pageJSON(t, PageID, `<iframe src="https://www.youtube.com/embed/uZf2jkCI6Fo"></iframe>`+embed(1)+trackEmbed(9)+trackEmbed(8))
 	fetcher.fail = map[string]error{trackURL: errors.New("player down")}
-	if _, err := poller.Poll(ctx, source); err == nil {
-		t.Fatal("a failing track player committed anyway")
+	// The unreachable track player is quarantined: the rest of the observation
+	// still publishes, and the track itself is retried on the next poll.
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatalf("one unreachable player must not fail the poll: %v", err)
 	}
-	if stored := loadFeed(t, store); len(stored) != 2 {
-		t.Fatalf("failed poll stored %#v", stored)
+	if stored := loadFeed(t, store); len(stored) != 3 {
+		t.Fatalf("poll with a broken player stored %#v, want the video published and the track quarantined", stored)
+	}
+	if _, ok := loadFeed(t, store)[trackGUIDPrefix+"9"]; ok {
+		t.Fatal("a quarantined track was announced anyway")
 	}
 	delete(fetcher.fail, trackURL)
 	if _, err := poller.Poll(ctx, source); err != nil {

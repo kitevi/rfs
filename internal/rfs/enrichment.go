@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 )
 
 // EnrichedChangeFlow describes optional metadata queries for emitted changes.
@@ -32,6 +33,9 @@ func (p Poller) enrichChanges(ctx context.Context, flow Flow, changes []Extracte
 		}
 		if url == "" {
 			continue
+		}
+		if err := p.beforeSecondaryFetch(ctx, url); err != nil {
+			return nil, err
 		}
 		var result FetchResult
 		if body == nil {
@@ -103,9 +107,10 @@ type AnnouncementIdentityFlow interface {
 }
 
 // resolveAnnouncementIdentities fetches player pages for items whose release
-// identity is not yet final. A failure leaves the checkpoint untouched, so the
-// next poll retries the same observation.
-func (p Poller) resolveAnnouncementIdentities(ctx context.Context, flow AnnouncementFlow, checkpoint json.RawMessage, current []ExtractedItem) ([]ExtractedItem, error) {
+// identity is not yet final. An item whose page cannot be read is quarantined
+// out of the observation, so one broken player cannot stop the release feed: the
+// checkpoint does not record it and the next poll retries it.
+func (p Poller) resolveAnnouncementIdentities(ctx context.Context, sourceID string, flow AnnouncementFlow, checkpoint json.RawMessage, current []ExtractedItem) ([]ExtractedItem, error) {
 	resolver, ok := flow.(AnnouncementIdentityFlow)
 	if !ok || len(current) == 0 {
 		return current, nil
@@ -122,19 +127,14 @@ func (p Poller) resolveAnnouncementIdentities(ctx context.Context, flow Announce
 		if url == "" {
 			return nil, fmt.Errorf("announcement identity missing a player URL")
 		}
-		result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+		resolved, err := p.resolveIdentity(ctx, resolver, url, item)
 		if err != nil {
-			return nil, err
-		}
-		if result.Status == FetchThrottled {
-			return nil, &fetchThrottle{result.RetryAfter}
-		}
-		if result.Status != FetchModified {
-			return nil, fmt.Errorf("announcement identity unavailable (status %d)", result.Status)
-		}
-		resolved, err := resolver.ResolveIdentity(result.Page, item)
-		if err != nil {
-			return nil, err
+			if !quarantinable(err) {
+				return nil, err
+			}
+			log.Printf("rfs: quarantine %s/%s: %v", sourceID, item.GUID, err)
+			ready = withoutItems(ready, []ExtractedItem{item})
+			continue
 		}
 		found := false
 		for i := range ready {
@@ -150,44 +150,83 @@ func (p Poller) resolveAnnouncementIdentities(ctx context.Context, flow Announce
 	return ready, nil
 }
 
+// resolveIdentity fetches one identity page and lets the Flow read it.
+func (p Poller) resolveIdentity(ctx context.Context, resolver AnnouncementIdentityFlow, url string, item ExtractedItem) (ExtractedItem, error) {
+	if err := p.beforeSecondaryFetch(ctx, url); err != nil {
+		return ExtractedItem{}, err
+	}
+	result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+	if err != nil {
+		return ExtractedItem{}, err
+	}
+	if result.Status == FetchThrottled {
+		return ExtractedItem{}, &fetchThrottle{result.RetryAfter}
+	}
+	if result.Status != FetchModified {
+		return ExtractedItem{}, fmt.Errorf("announcement identity unavailable (status %d)", result.Status)
+	}
+	return resolver.ResolveIdentity(result.Page, item)
+}
+
 // enrichAnnouncements resolves metadata for newly announced items before they
 // are committed. Requests run sequentially, so a whole-page replacement cannot
-// burst at the upstream host, and any failure aborts the poll before the commit:
-// the checkpoint still lacks these items, so the next poll retries the batch
-// instead of publishing a partial one.
-func (p Poller) enrichAnnouncements(ctx context.Context, flow Flow, announcements []ExtractedItem) ([]ExtractedItem, error) {
+// burst at the upstream host. An item whose metadata cannot be read is returned
+// as quarantined for the caller to drop from the observation: the rest of the
+// batch publishes, and the checkpoint never books the skipped item, so the next
+// poll retries it. A Flow that renames an identity is a contract violation and
+// stays fatal.
+func (p Poller) enrichAnnouncements(ctx context.Context, sourceID string, flow Flow, announcements []ExtractedItem, resolved map[string]ExtractedItem) (published, quarantined []ExtractedItem, err error) {
 	enriched, ok := flow.(EnrichedAnnouncementFlow)
 	if !ok || len(announcements) == 0 {
-		return announcements, nil
+		return announcements, nil, nil
 	}
-	resolved := make([]ExtractedItem, len(announcements))
-	for i, item := range announcements {
-		url, err := enriched.AnnouncementEnrichmentURL(item)
-		if err != nil {
-			return nil, err
-		}
-		if url == "" {
-			resolved[i] = item
+	published = make([]ExtractedItem, 0, len(announcements))
+	for _, item := range announcements {
+		if cached, ok := resolved[item.GUID]; ok {
+			published = append(published, cached)
 			continue
 		}
-		result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+		url, err := enriched.AnnouncementEnrichmentURL(item)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		if result.Status == FetchThrottled {
-			return nil, &fetchThrottle{result.RetryAfter}
+		if url == "" {
+			published = append(published, item)
+			continue
 		}
-		if result.Status != FetchModified {
-			return nil, fmt.Errorf("announcement metadata unavailable (status %d)", result.Status)
-		}
-		item, err = enriched.EnrichAnnouncement(result.Page, item)
+		candidate, err := p.fetchAnnouncement(ctx, enriched, url, item)
 		if err != nil {
-			return nil, err
+			if !quarantinable(err) {
+				return nil, nil, err
+			}
+			log.Printf("rfs: quarantine %s/%s: %v", sourceID, item.GUID, err)
+			quarantined = append(quarantined, item)
+			continue
 		}
-		if item.GUID != announcements[i].GUID {
-			return nil, fmt.Errorf("announcement metadata changed GUID %q to %q", announcements[i].GUID, item.GUID)
+		if candidate.GUID != item.GUID {
+			return nil, nil, fmt.Errorf("announcement metadata changed GUID %q to %q", item.GUID, candidate.GUID)
 		}
-		resolved[i] = item
+		resolved[item.GUID] = candidate
+		published = append(published, candidate)
 	}
-	return resolved, nil
+	return published, quarantined, nil
+}
+
+// fetchAnnouncement fetches one announcement's metadata page and lets the Flow
+// decode it.
+func (p Poller) fetchAnnouncement(ctx context.Context, flow EnrichedAnnouncementFlow, url string, item ExtractedItem) (ExtractedItem, error) {
+	if err := p.beforeSecondaryFetch(ctx, url); err != nil {
+		return ExtractedItem{}, err
+	}
+	result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+	if err != nil {
+		return ExtractedItem{}, err
+	}
+	if result.Status == FetchThrottled {
+		return ExtractedItem{}, &fetchThrottle{result.RetryAfter}
+	}
+	if result.Status != FetchModified {
+		return ExtractedItem{}, fmt.Errorf("announcement metadata unavailable (status %d)", result.Status)
+	}
+	return flow.EnrichAnnouncement(result.Page, item)
 }

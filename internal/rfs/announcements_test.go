@@ -347,7 +347,7 @@ func TestAnnouncementIdentityIsResolvedBeforeEvaluate(t *testing.T) {
 	}
 }
 
-func TestAnnouncementIdentityFailurePublishesNothing(t *testing.T) {
+func TestAnnouncementIdentityFailureQuarantinesOnlyThatItem(t *testing.T) {
 	ctx := t.Context()
 	store, err := OpenInMemorySQLiteStore()
 	if err != nil {
@@ -359,22 +359,41 @@ func TestAnnouncementIdentityFailurePublishesNothing(t *testing.T) {
 		version: 1,
 	}}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
-	fetcher := urlFetcher{
-		pages: map[string]Page{source.URL: Page("<page>")},
+	fetcher := &urlFetcher{
+		pages: map[string]Page{source.URL: Page("<page>"), "https://players.test/track:9": Page("album:1")},
 		err:   map[string]error{"https://players.test/track:9": fmt.Errorf("player down")},
 	}
-	if _, err := (Poller{Fetcher: fetcher, Store: store}).Poll(ctx, source); err == nil {
-		t.Fatal("identity fetch failure did not fail the poll")
+	poller := Poller{Fetcher: fetcher, Store: store}
+
+	result, err := poller.Poll(ctx, source)
+	if err != nil {
+		t.Fatalf("a broken identity page must not fail the poll: %v", err)
 	}
-	if stored := loadAnnouncementFeed(t, store, source.ID); len(stored) != 0 {
-		t.Fatalf("failed identity resolution published %#v", stored)
+	if result.Status != PollUpdated {
+		t.Fatalf("poll = %v, want the resolvable item published", result.Status)
+	}
+	stored := loadAnnouncementFeed(t, store, source.ID)
+	if len(stored) != 1 || stored["album:1"].GUID != "album:1" {
+		t.Fatalf("stored %#v, want only the item whose identity resolved", stored)
 	}
 	checkpoint, err := store.LoadAnnouncementCheckpoint(ctx, source.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(checkpoint) != 0 {
-		t.Fatalf("failed identity resolution advanced the checkpoint: %s", checkpoint)
+	if !strings.Contains(string(checkpoint), "album:1") || strings.Contains(string(checkpoint), "track:9") {
+		t.Fatalf("checkpoint = %s, want the announced item booked and the quarantined one left for retry", checkpoint)
+	}
+
+	// The quarantined identity is retried on the next poll and, once it
+	// resolves to a different release, announced then.
+	fetcher.err = nil
+	fetcher.pages["https://players.test/track:9"] = Page("album:2")
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatalf("retry poll: %v", err)
+	}
+	stored = loadAnnouncementFeed(t, store, source.ID)
+	if len(stored) != 2 || stored["album:2"].GUID != "album:2" {
+		t.Fatalf("retry stored %#v, want the quarantined item announced after it resolved", stored)
 	}
 }
 
