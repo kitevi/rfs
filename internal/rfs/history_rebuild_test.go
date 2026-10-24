@@ -7,8 +7,7 @@ import (
 	"testing"
 
 	"github.com/kitevi/rfs/internal/rfs"
-	"github.com/kitevi/rfs/internal/sources/film"
-	"github.com/kitevi/rfs/internal/sources/ptg"
+	"github.com/kitevi/rfs/internal/sources/catalog"
 )
 
 func TestStoredInputRoundTrip(t *testing.T) {
@@ -16,8 +15,8 @@ func TestStoredInputRoundTrip(t *testing.T) {
 		name, page string
 		flow       rfs.Flow
 	}{
-		{"ptg", `[{"threads":[{"no":123,"sub":"/ptg/ - General","com":"discuss /ptg/ today<br>body &amp; links","time":1000,"replies":123}]}]`, ptg.Flow{}},
-		{"film", `[{"threads":[{"no":123,"sub":"/film/ - General","com":"discuss /film/ today<br>body &amp; links","time":1000,"replies":123}]}]`, film.Flow{}},
+		{"ptg", `[{"threads":[{"no":123,"sub":"/ptg/ - General","com":"discuss /ptg/ today<br>body &amp; links","time":1000,"replies":123}]}]`, catalog.PTG},
+		{"film", `[{"threads":[{"no":123,"sub":"/film/ - General","com":"discuss /film/ today<br>body &amp; links","time":1000,"replies":123}]}]`, catalog.Film},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			extracted, err := tc.flow.Extract(rfs.Page(tc.page))
@@ -71,7 +70,7 @@ func TestHistoryRebuildsArchivedRowsOnlyUnderPoll(t *testing.T) {
 	}
 	defer store.Close()
 	page := rfs.Page(`[{"threads":[{"no":123,"sub":"/ptg/ - General","com":"edition","time":1788200342,"replies":1}]}]`)
-	extracted, err := (ptg.Flow{}).Extract(page)
+	extracted, err := catalog.PTG.Extract(page)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,11 +79,11 @@ func TestHistoryRebuildsArchivedRowsOnlyUnderPoll(t *testing.T) {
 	if err := store.MergeHistory(ctx, "ptg", []rfs.Item{archived}, nil, 11); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.SaveFetchCache(ctx, "ptg", rfs.FetchCache{ExtractVersion: ptg.ExtractVersion - 1}); err != nil {
+	if err := store.SaveFetchCache(ctx, "ptg", rfs.FetchCache{ExtractVersion: catalog.PTG.ExtractVersion - 1}); err != nil {
 		t.Fatal(err)
 	}
 
-	pollPTG(t, store, ptg.Flow{})
+	pollPTG(t, store, catalog.PTG)
 
 	stored, err := store.LoadSnapshot(ctx, "ptg")
 	if err != nil {
@@ -120,7 +119,7 @@ func TestHistoryRebuildsArchivedRowsOnlyUnderPoll(t *testing.T) {
 		t.Fatalf("archived row became live: %v %v", live, err)
 	}
 	cache, err := store.LoadFetchCache(ctx, "ptg")
-	if err != nil || cache.ExtractVersion != ptg.ExtractVersion {
+	if err != nil || cache.ExtractVersion != catalog.PTG.ExtractVersion {
 		t.Fatalf("version not advanced: %#v", cache)
 	}
 }

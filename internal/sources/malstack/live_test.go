@@ -11,7 +11,7 @@ import (
 	"github.com/kitevi/rfs/internal/sources/malstack"
 )
 
-// TestLiveMALStack verifies the parser against the deployed page. Run it
+// TestLiveMALStack verifies the parser against both deployed stack pages. Run it
 // explicitly on the deployment host; normal tests never contact upstream.
 // An access block is reported, not bypassed.
 func TestLiveMALStack(t *testing.T) {
@@ -21,19 +21,21 @@ func TestLiveMALStack(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	fetcher := rfs.NewHTTPFetcher(&http.Client{Timeout: 30 * time.Second})
-	fetched, err := fetcher.Fetch(ctx, malstack.PageURL, rfs.FetchCache{})
-	if err != nil {
-		t.Fatalf("live fetch failed (report the block, do not bypass): %v", err)
+	for _, stackID := range []string{malstack.NewAnimeIPs, malstack.NextSakuga} {
+		fetched, err := fetcher.Fetch(ctx, malstack.PageURL(stackID), rfs.FetchCache{})
+		if err != nil {
+			t.Fatalf("stack %s: live fetch failed (report the block, do not bypass): %v", stackID, err)
+		}
+		if fetched.Status != rfs.FetchModified {
+			t.Fatalf("stack %s: live fetch returned status %d", stackID, fetched.Status)
+		}
+		items, err := (malstack.Flow{StackID: stackID}).Extract(fetched.Page)
+		if err != nil {
+			t.Fatalf("stack %s: live page no longer matches the parser: %v", stackID, err)
+		}
+		if len(items) == 0 {
+			t.Fatalf("stack %s: live page parsed to an empty collection", stackID)
+		}
+		t.Logf("stack %s: parsed %d anime, first: %s (%s)", stackID, len(items), items[0].Title, items[0].Link)
 	}
-	if fetched.Status != rfs.FetchModified {
-		t.Fatalf("live fetch returned status %d", fetched.Status)
-	}
-	items, err := (malstack.Flow{}).Extract(fetched.Page)
-	if err != nil {
-		t.Fatalf("live page no longer matches the parser: %v", err)
-	}
-	if len(items) == 0 {
-		t.Fatal("live page parsed to an empty collection")
-	}
-	t.Logf("parsed %d anime, first: %s (%s)", len(items), items[0].Title, items[0].Link)
 }

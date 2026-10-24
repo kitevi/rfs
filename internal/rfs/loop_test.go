@@ -7,9 +7,9 @@ import (
 	"time"
 )
 
-// TestLoopDrainsInFlightPollBeforeReturning verifies that on shutdown an
-// in-flight poll is allowed to finish — the fetch completes, the snapshot
-// save commits — rather than being hard-cut. This is the drain contract the
+// TestLoopDrainsInFlightPollBeforeReturning verifies that on shutdown Run
+// waits for an in-flight poll to return, so a commit already under way
+// finishes before the process exits. This is the drain contract the
 // self-update exec path and a SIGTERM both depend on.
 func TestLoopDrainsInFlightPollBeforeReturning(t *testing.T) {
 	started := make(chan struct{})
@@ -52,18 +52,17 @@ func TestLoopDrainsInFlightPollBeforeReturning(t *testing.T) {
 	<-pollDone
 }
 
-// TestLoopTerminatesDrainWhenPollIsStuck verifies that a stuck in-flight
-// poll (one that never completes on its own) cannot pin shutdown forever:
-// the per-poll context's timeout cuts it, so Run returns within the bound.
-// Without this, a hung upstream would leave the process unable to exit or
-// re-exec — drain would wait on a poll that never finishes.
-func TestLoopTerminatesDrainWhenPollIsStuck(t *testing.T) {
+// TestLoopShutdownCancelsInFlightPoll verifies that shutdown reaches a poll
+// that is still waiting on its context, so drain does not sit out the poll's
+// own deadline. Without this, a poll with many paced requests left would keep
+// the process from exiting or re-executing until every request had run.
+func TestLoopShutdownCancelsInFlightPoll(t *testing.T) {
 	pollStarted := make(chan struct{})
 	poll := func(ctx context.Context) {
 		close(pollStarted)
-		<-ctx.Done() // a stuck poll that only stops when its context is cancelled
+		<-ctx.Done() // a poll that only stops when its context is cancelled
 	}
-	loop := Loop{Poll: poll, Interval: time.Hour, PollTimeout: 50 * time.Millisecond}
+	loop := Loop{Poll: poll, Interval: time.Hour}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	runReturned := make(chan struct{})
@@ -73,14 +72,60 @@ func TestLoopTerminatesDrainWhenPollIsStuck(t *testing.T) {
 	}()
 
 	<-pollStarted
-	cancel() // request shutdown while the poll is stuck
+	cancel()
 
 	select {
 	case <-runReturned:
-		// Good: the stuck poll was cut by its own per-poll timeout, so the
-		// drain terminated and Run returned.
 	case <-time.After(2 * time.Second):
-		t.Fatal("Run did not return after shutdown; a stuck poll pinned the drain (drain never terminates)")
+		t.Fatal("Run did not return after shutdown; the in-flight poll never saw the cancellation")
+	}
+}
+
+// TestLoopCutsAPollAtItsTimeout verifies that a poll which never finishes on
+// its own is cut by PollTimeout, so the next cycle can start.
+func TestLoopCutsAPollAtItsTimeout(t *testing.T) {
+	cut := make(chan struct{})
+	poll := func(ctx context.Context) {
+		<-ctx.Done()
+		select {
+		case <-cut:
+		default:
+			close(cut)
+		}
+	}
+	loop := Loop{Poll: poll, Interval: time.Hour, PollTimeout: 50 * time.Millisecond}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go loop.Run(ctx)
+
+	select {
+	case <-cut:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a stuck poll was not cut by its own timeout")
+	}
+}
+
+// TestLoopPollTimeoutDefaultsToInterval verifies that a cycle is allowed to
+// run until the next one is due. A fixed two-minute bound used to cut polls
+// whose paced follow-up requests needed longer, so they never committed.
+func TestLoopPollTimeoutDefaultsToInterval(t *testing.T) {
+	remaining := make(chan time.Duration, 1)
+	poll := func(ctx context.Context) {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			remaining <- 0
+			return
+		}
+		remaining <- time.Until(deadline)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go Loop{Poll: poll, Interval: time.Hour}.Run(ctx)
+
+	got := <-remaining
+	if got < 59*time.Minute || got > time.Hour {
+		t.Fatalf("poll deadline in %s, want about the one-hour interval", got)
 	}
 }
 

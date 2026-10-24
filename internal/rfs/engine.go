@@ -63,8 +63,8 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 	if p.Store == nil {
 		return PollResult{}, fmt.Errorf("poll %s: missing store", source.ID)
 	}
-	if source.Flow == nil {
-		return PollResult{}, fmt.Errorf("poll %s: missing flow", source.ID)
+	if err := ValidateSource(source); err != nil {
+		return PollResult{}, fmt.Errorf("poll: %w", err)
 	}
 
 	cache, err := p.Store.LoadFetchCache(ctx, source.ID)
@@ -106,7 +106,7 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		if flowRequiresFullPage(source.Flow) {
 			return PollResult{}, fmt.Errorf("poll %s: requires a full collection page, got 304", source.ID)
 		}
-		if err := p.Store.SaveFetchCache(ctx, source.ID, savedCache); err != nil {
+		if err := p.Store.SaveFetchCache(commitContext(ctx), source.ID, savedCache); err != nil {
 			return PollResult{}, err
 		}
 		return PollResult{Status: PollUnchanged}, nil
@@ -126,14 +126,11 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 	}
 
 	if announcement, ok := source.Flow.(AnnouncementFlow); ok {
-		if comparesChanges(source.Flow) {
-			return PollResult{}, fmt.Errorf("poll %s: flow cannot both announce and compare changes", source.ID)
-		}
 		return p.pollAnnouncements(ctx, source, announcement, extracted, savedCache)
 	}
 
-	if comparesChanges(source.Flow) {
-		return p.pollChanges(ctx, source, source.Flow, extracted, savedCache)
+	if changes, ok := source.Flow.(ChangeFlow); ok {
+		return p.pollChanges(ctx, source, changes, extracted, savedCache)
 	}
 
 	items := make([]Item, 0, len(extracted))
@@ -193,17 +190,17 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 			}
 		}
 		savedCache.ExtractVersion = source.Flow.Version()
-		if err := p.Store.CommitHistory(ctx, source.ID, items, liveGUIDs, keepStored, savedCache, rebuild); err != nil {
+		if err := p.Store.CommitHistory(commitContext(ctx), source.ID, items, liveGUIDs, keepStored, savedCache, rebuild); err != nil {
 			return PollResult{}, err
 		}
 		return PollResult{Status: PollUpdated}, nil
-	} else if err := p.Store.SaveSnapshot(ctx, source.ID, items); err != nil {
+	} else if err := p.Store.SaveSnapshot(commitContext(ctx), source.ID, items); err != nil {
 		return PollResult{}, err
 	}
 	// The snapshot was just re-derived with the running Flow's code, so advance
 	// the stored version — future polls can trust a 304 until this changes again.
 	savedCache.ExtractVersion = source.Flow.Version()
-	if err := p.Store.SaveFetchCache(ctx, source.ID, savedCache); err != nil {
+	if err := p.Store.SaveFetchCache(commitContext(ctx), source.ID, savedCache); err != nil {
 		return PollResult{}, err
 	}
 	return PollResult{Status: PollUpdated}, nil
@@ -236,4 +233,12 @@ func (p Poller) now() time.Time {
 		return time.Now().UTC()
 	}
 	return p.Clock.Now()
+}
+
+// commitContext detaches a poll's final write from cancellation. A poll that
+// has derived its result commits it even when shutdown arrives mid-commit, so
+// a cancelled poll either left nothing behind or finished; it never discards
+// work it already did. Cancellation still stops every request before this.
+func commitContext(ctx context.Context) context.Context {
+	return context.WithoutCancel(ctx)
 }

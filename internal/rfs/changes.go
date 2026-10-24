@@ -16,17 +16,6 @@ type ChangeFlow interface {
 	Changes(previous, current []ExtractedItem) ([]ExtractedItem, error)
 }
 
-// ClockedChangeFlow is a ChangeFlow whose comparison depends on the poll
-// instant. rfs supplies the instant from its own clock, so a Flow never reads
-// the ambient time and the comparison stays testable. It is a separate contract
-// rather than an addition to ChangeFlow: a Flow whose decision needs the instant
-// should not also have to offer a comparison that has none. A ChangeFlow that
-// does not implement this interface keeps comparing without an instant.
-type ClockedChangeFlow interface {
-	Flow
-	ChangesAt(time.Time, []ExtractedItem, []ExtractedItem) ([]ExtractedItem, error)
-}
-
 type ChangeState struct {
 	Items       []ExtractedItem
 	Version     int
@@ -42,14 +31,11 @@ type ChangeStore interface {
 // comparesChanges reports whether a Flow's entries are derived by comparison
 // instead of being projected from the page every poll.
 func comparesChanges(flow Flow) bool {
-	switch flow.(type) {
-	case ChangeFlow, ClockedChangeFlow:
-		return true
-	}
-	return false
+	_, ok := flow.(ChangeFlow)
+	return ok
 }
 
-func (p Poller) pollChanges(ctx context.Context, source Source, flow Flow, current []ExtractedItem, cache FetchCache) (PollResult, error) {
+func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow, current []ExtractedItem, cache FetchCache) (PollResult, error) {
 	store, ok := p.Store.(ChangeStore)
 	if !ok {
 		return PollResult{}, fmt.Errorf("poll %s: store does not support changes", source.ID)
@@ -58,25 +44,12 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow Flow, curre
 	if err != nil {
 		return PollResult{}, err
 	}
+	// The first complete observation, and the first after an extraction-version
+	// change, is a silent baseline: comparing it would announce the Flow's own
+	// change, not upstream's.
 	var changes []ExtractedItem
-	switch {
-	case !previous.Initialized:
-		// The first complete observation is the feed's starting point. Sources
-		// that opt in publish it; everything else starts from silence.
-		if source.EmitInitial {
-			changes, err = changesAt(flow, p.now(), nil, current)
-			if err != nil {
-				return PollResult{}, err
-			}
-		}
-	case previous.Version == flow.Version() || source.EmitVersionChanges:
-		// A matching version compares as usual. A Source that opted in also
-		// compares across an extraction-version change, so a widened Flow can
-		// publish its newly covered observations instead of dropping them
-		// behind a silent rebaseline. The Flow has to treat an older payload as
-		// comparison state; a bump that changes every payload announces the
-		// whole feed again, which is why this stays opt-in.
-		changes, err = changesAt(flow, p.now(), previous.Items, current)
+	if previous.Initialized && previous.Version == flow.Version() {
+		changes, err = flow.Changes(previous.Items, current)
 		if err != nil {
 			return PollResult{}, err
 		}
@@ -94,7 +67,7 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow Flow, curre
 		items = append(items, Item{GUID: fmt.Sprintf("%s:%d:%s", source.ID, revision, change.GUID), Title: change.Title, Link: change.Link, Description: change.Description, Metadata: change.Metadata, PubDate: changeTime(change, p.now())})
 	}
 	cache.ExtractVersion = flow.Version()
-	err = store.SaveChanges(ctx, source.ID, ChangeState{Items: current, Version: flow.Version(), Revision: revision, Initialized: true}, items, cache)
+	err = store.SaveChanges(commitContext(ctx), source.ID, ChangeState{Items: current, Version: flow.Version(), Revision: revision, Initialized: true}, items, cache)
 	if err != nil {
 		return PollResult{}, err
 	}
@@ -102,18 +75,6 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow Flow, curre
 		return PollResult{Status: PollUnchanged}, nil
 	}
 	return PollResult{Status: PollUpdated}, nil
-}
-
-// changesAt runs the comparison, handing a clock-aware Flow the poll instant so
-// its decision cannot drift with the wall clock.
-func changesAt(flow Flow, at time.Time, previous, current []ExtractedItem) ([]ExtractedItem, error) {
-	switch typed := flow.(type) {
-	case ClockedChangeFlow:
-		return typed.ChangesAt(at, previous, current)
-	case ChangeFlow:
-		return typed.Changes(previous, current)
-	}
-	return nil, fmt.Errorf("flow does not compare observations")
 }
 
 // changeTime picks the emitted timestamp: the Flow's own publication time when

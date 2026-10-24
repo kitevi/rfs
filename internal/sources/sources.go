@@ -3,14 +3,12 @@ package sources
 import (
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources/acloserlisten"
+	"github.com/kitevi/rfs/internal/sources/catalog"
 	"github.com/kitevi/rfs/internal/sources/cittafiera"
 	"github.com/kitevi/rfs/internal/sources/coached"
-	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/malstack"
-	"github.com/kitevi/rfs/internal/sources/malstack38814"
 	"github.com/kitevi/rfs/internal/sources/meltzer"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
-	"github.com/kitevi/rfs/internal/sources/ptg"
 	"github.com/kitevi/rfs/internal/sources/seadex"
 	"github.com/kitevi/rfs/internal/sources/visionario"
 )
@@ -73,24 +71,24 @@ func All() []rfs.Source {
 		},
 		{
 			ID:  "ptg",
-			URL: ptg.PageURL,
+			URL: catalog.PTG.PageURL(),
 			Meta: rfs.SourceMeta{
 				Title:       "Private Trackers General",
 				Description: "Latest /ptg/ opening posts via the board catalog.",
-				Link:        ptg.HumanURL,
+				Link:        catalog.PTG.HumanURL(),
 			},
-			Flow:    ptg.Flow{},
+			Flow:    catalog.PTG,
 			History: rfs.DefaultCatalogHistory(),
 		},
 		{
 			ID:  "film",
-			URL: film.PageURL,
+			URL: catalog.Film.PageURL(),
 			Meta: rfs.SourceMeta{
 				Title:       "Arthouse & Classic Cinema",
 				Description: "Latest /film/ opening posts via the board catalog.",
-				Link:        film.HumanURL,
+				Link:        catalog.Film.HumanURL(),
 			},
-			Flow:    film.Flow{},
+			Flow:    catalog.Film,
 			History: rfs.DefaultCatalogHistory(),
 		},
 		{
@@ -105,25 +103,25 @@ func All() []rfs.Source {
 		},
 		{
 			ID:  "mal-stack-82158",
-			URL: malstack.PageURL,
+			URL: malstack.PageURL(malstack.NewAnimeIPs),
 			Meta: rfs.SourceMeta{
 				Title:                "MyAnimeList: New Anime IPs with Exceptional Production Value",
 				Description:          "Observed additions, removals, and curator note edits to the Interest Stack.",
-				Link:                 malstack.HumanURL,
+				Link:                 malstack.PageURL(malstack.NewAnimeIPs),
 				ItemDescriptionsHTML: true,
 			},
-			Flow: malstack.Flow{},
+			Flow: malstack.Flow{StackID: malstack.NewAnimeIPs},
 		},
 		{
 			ID:  "mal-stack-38814",
-			URL: malstack38814.PageURL,
+			URL: malstack.PageURL(malstack.NextSakuga),
 			Meta: rfs.SourceMeta{
 				Title:                "MyAnimeList: The Next Sakuga Shows",
 				Description:          "Observed additions, removals, and curator note edits to the Interest Stack.",
-				Link:                 malstack38814.HumanURL,
+				Link:                 malstack.PageURL(malstack.NextSakuga),
 				ItemDescriptionsHTML: true,
 			},
-			Flow: malstack38814.Flow{},
+			Flow: malstack.Flow{StackID: malstack.NextSakuga},
 		},
 	}
 }

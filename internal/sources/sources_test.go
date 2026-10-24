@@ -6,12 +6,11 @@ import (
 
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources"
+	"github.com/kitevi/rfs/internal/sources/catalog"
 	"github.com/kitevi/rfs/internal/sources/cittafiera"
 	"github.com/kitevi/rfs/internal/sources/coached"
-	"github.com/kitevi/rfs/internal/sources/film"
 	"github.com/kitevi/rfs/internal/sources/malstack"
 	"github.com/kitevi/rfs/internal/sources/onepiece"
-	"github.com/kitevi/rfs/internal/sources/ptg"
 	"github.com/kitevi/rfs/internal/sources/visionario"
 )
 
@@ -22,17 +21,17 @@ func TestAllIncludesPTGSource(t *testing.T) {
 			continue
 		}
 		found = true
-		if source.URL != ptg.PageURL {
-			t.Fatalf("ptg source URL = %q, want %q", source.URL, ptg.PageURL)
+		if source.URL != catalog.PTG.PageURL() {
+			t.Fatalf("ptg source URL = %q, want %q", source.URL, catalog.PTG.PageURL())
 		}
 		if source.Meta.Title != "Private Trackers General" {
 			t.Fatalf("ptg source title = %q", source.Meta.Title)
 		}
-		if source.Meta.Link != ptg.HumanURL {
-			t.Fatalf("ptg source link = %q, want %q", source.Meta.Link, ptg.HumanURL)
+		if source.Meta.Link != catalog.PTG.HumanURL() {
+			t.Fatalf("ptg source link = %q, want %q", source.Meta.Link, catalog.PTG.HumanURL())
 		}
-		if source.Flow.Version() != ptg.ExtractVersion {
-			t.Fatalf("ptg source flow version = %d, want %d", source.Flow.Version(), ptg.ExtractVersion)
+		if source.Flow.Version() != catalog.PTG.ExtractVersion {
+			t.Fatalf("ptg source flow version = %d, want %d", source.Flow.Version(), catalog.PTG.ExtractVersion)
 		}
 	}
 	if !found {
@@ -47,17 +46,17 @@ func TestAllIncludesFilmSource(t *testing.T) {
 			continue
 		}
 		found = true
-		if source.URL != film.PageURL {
-			t.Fatalf("film source URL = %q, want %q", source.URL, film.PageURL)
+		if source.URL != catalog.Film.PageURL() {
+			t.Fatalf("film source URL = %q, want %q", source.URL, catalog.Film.PageURL())
 		}
 		if source.Meta.Title != "Arthouse & Classic Cinema" {
 			t.Fatalf("film source title = %q", source.Meta.Title)
 		}
-		if source.Meta.Link != film.HumanURL {
-			t.Fatalf("film source link = %q, want %q", source.Meta.Link, film.HumanURL)
+		if source.Meta.Link != catalog.Film.HumanURL() {
+			t.Fatalf("film source link = %q, want %q", source.Meta.Link, catalog.Film.HumanURL())
 		}
-		if source.Flow.Version() != film.ExtractVersion {
-			t.Fatalf("film source flow version = %d, want %d", source.Flow.Version(), film.ExtractVersion)
+		if source.Flow.Version() != catalog.Film.ExtractVersion {
+			t.Fatalf("film source flow version = %d, want %d", source.Flow.Version(), catalog.Film.ExtractVersion)
 		}
 	}
 	if !found {
@@ -72,11 +71,11 @@ func TestAllIncludesMALStackSource(t *testing.T) {
 			continue
 		}
 		found = true
-		if source.URL != malstack.PageURL {
-			t.Fatalf("mal-stack source URL = %q, want %q", source.URL, malstack.PageURL)
+		if source.URL != malstack.PageURL(malstack.NewAnimeIPs) {
+			t.Fatalf("mal-stack source URL = %q, want %q", source.URL, malstack.PageURL(malstack.NewAnimeIPs))
 		}
-		if source.Meta.Link != malstack.HumanURL {
-			t.Fatalf("mal-stack source link = %q, want %q", source.Meta.Link, malstack.HumanURL)
+		if source.Meta.Link != source.URL {
+			t.Fatalf("mal-stack source link = %q, want %q", source.Meta.Link, source.URL)
 		}
 		if source.Meta.Title == "" || source.Meta.Description == "" {
 			t.Fatal("mal-stack source metadata is incomplete")
@@ -89,9 +88,6 @@ func TestAllIncludesMALStackSource(t *testing.T) {
 		}
 		if _, ok := source.Flow.(rfs.ChangeFlow); !ok {
 			t.Fatalf("mal-stack flow %T does not implement rfs.ChangeFlow", source.Flow)
-		}
-		if source.EmitInitial || source.EmitVersionChanges {
-			t.Fatal("mal-stack change feed must start from a silent baseline")
 		}
 		if source.History != nil {
 			t.Fatal("mal-stack change feed does not use catalog history")
@@ -125,7 +121,7 @@ func TestAllIncludesMALStack38814Source(t *testing.T) {
 		if source.Flow.Version() != 1 {
 			t.Fatalf("stack flow version = %d, want 1", source.Flow.Version())
 		}
-		if source.EmitInitial || source.EmitVersionChanges || source.History != nil || source.Interval != 0 {
+		if source.History != nil || source.Interval != 0 {
 			t.Fatal("stack must use a silent baseline, change history, and the default interval")
 		}
 		return
@@ -198,7 +194,7 @@ func TestAllIncludesCittaFieraSource(t *testing.T) {
 		if _, ok := source.Flow.(rfs.AnnouncementIdentityFlow); !ok {
 			t.Fatalf("citta-fiera flow %T does not implement rfs.AnnouncementIdentityFlow", source.Flow)
 		}
-		if source.Interval != 0 || source.History != nil || source.EmitInitial || source.EmitVersionChanges {
+		if source.Interval != 0 || source.History != nil {
 			t.Fatal("citta-fiera source must use the default interval and an announcement checkpoint")
 		}
 	}
@@ -235,7 +231,7 @@ func TestAllIncludesVisionarioSource(t *testing.T) {
 		if _, ok := source.Flow.(rfs.AnnouncementIdentityFlow); !ok {
 			t.Fatalf("visionario flow %T does not implement rfs.AnnouncementIdentityFlow", source.Flow)
 		}
-		if source.Interval != 0 || source.History != nil || source.EmitInitial || source.EmitVersionChanges {
+		if source.Interval != 0 || source.History != nil {
 			t.Fatal("visionario source must use the default interval and an announcement checkpoint")
 		}
 	}
@@ -291,7 +287,7 @@ func TestAllIncludesCoachedSource(t *testing.T) {
 		if source.Meta.ItemDescriptionsHTML {
 			t.Fatal("coached source has no descriptions to render as HTML")
 		}
-		if source.Interval != 0 || source.History != nil || source.EmitInitial || source.EmitVersionChanges {
+		if source.Interval != 0 || source.History != nil {
 			t.Fatal("coached source must use the default interval and a plain current-state projection")
 		}
 	}
@@ -326,5 +322,14 @@ func TestAllSourceRegistrationsAreUniqueAndWellFormed(t *testing.T) {
 		if source.Flow.Version() <= 0 {
 			t.Fatalf("source %s Flow version = %d, want a pinned positive version", source.ID, source.Flow.Version())
 		}
+	}
+}
+
+// TestAllSourcesAreValid checks every registered Source the way rfs does at
+// startup, so a Flow whose capabilities do not pick one feed mode fails here
+// rather than on its first poll in production.
+func TestAllSourcesAreValid(t *testing.T) {
+	if err := rfs.ValidateSources(sources.All()); err != nil {
+		t.Fatal(err)
 	}
 }

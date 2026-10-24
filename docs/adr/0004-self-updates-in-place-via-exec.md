@@ -1,5 +1,8 @@
 # rfs self-updates in place via exec, draining on shutdown
 
+> **Status: amended by 0013.** Shutdown now cancels the in-flight poll and only
+> its commit is protected; the fixed two-minute poll deadline is gone.
+
 rfs runs on a server its operator cannot reach with root and cannot easily update by hand, so a manual `git pull && go install && restart` per release is a recurring hassle — and any ad-hoc "auto-update" script kept beside the binary drifts from the binary over time. To remove both, rfs self-updates: an independent background monitor compares the running build's version (baked in via `-ldflags -X`) to the latest GitHub release, and when a newer release exists it downloads the matching `GOOS/GOARCH` asset, verifies it against the published SHA-256 checksums file over HTTPS, atomically renames it over the running binary, and `syscall.Exec`s the new image in place — same PID, no supervisor, no separate updater to rot. Because the updater is compiled into the binary it ships with, the two cannot drift apart.
 
 `exec` replaces the process image instantly; Go goroutines do not get to finish. So a self-update (like a SIGTERM) goes through rfs's shutdown path: it drains an in-flight poll before exec — the HTTP fetch completes and the snapshot save commits — rather than cutting it. Each poll runs under a per-poll timeout on a context independent of the shutdown signal, so a healthy poll finishes naturally (drain) while a stuck upstream is cut by its own timeout and shutdown always terminates.

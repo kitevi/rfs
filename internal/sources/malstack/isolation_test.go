@@ -1,4 +1,4 @@
-package malstack38814_test
+package malstack_test
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 
 func TestPollKeepsMALStacksIndependent(t *testing.T) {
 	bodies := map[string]string{
-		"/mal-stack-38814": sparseStackHTML(),
-		"/mal-stack-82158": strings.Replace(sparseStackHTML(), "stacks/38814", "stacks/82158", 1),
+		"/mal-stack-82158": sparseStackHTML(),
+		"/mal-stack-38814": strings.Replace(sparseStackHTML(), "stacks/82158", "stacks/38814", 1),
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte(bodies[r.URL.Path]))
@@ -30,7 +30,7 @@ func TestPollKeepsMALStacksIndependent(t *testing.T) {
 	var watched []rfs.Source
 	byID := map[string]rfs.Source{}
 	for _, source := range sources.All() {
-		if source.ID != "mal-stack-38814" && source.ID != "mal-stack-82158" {
+		if source.ID != "mal-stack-82158" && source.ID != "mal-stack-38814" {
 			continue
 		}
 		source.URL = server.URL + "/" + source.ID
@@ -76,18 +76,18 @@ func TestPollKeepsMALStacksIndependent(t *testing.T) {
 	}
 	checkFeeds(nil)
 
-	bodies["/mal-stack-38814"] = strings.Replace(sparseStackHTML(), "<div class=\"intro\">\n      \n    </div>", `<div class="intro">New note.</div>`, 1)
-	if _, err := poller.Poll(context.Background(), byID["mal-stack-38814"]); err != nil {
-		t.Fatalf("38814 note edit: %v", err)
-	}
-	checkFeeds(map[string]string{"mal-stack-38814": "Notes updated: Ruri Dragon"})
-
-	bodies["/mal-stack-82158"] = strings.Replace(stackHTML(0), "stacks/38814", "stacks/82158", 1)
+	bodies["/mal-stack-82158"] = strings.Replace(sparseStackHTML(), "<div class=\"intro\">\n      \n    </div>", `<div class="intro">New note.</div>`, 1)
 	if _, err := poller.Poll(context.Background(), byID["mal-stack-82158"]); err != nil {
-		t.Fatalf("82158 removal: %v", err)
+		t.Fatalf("82158 note edit: %v", err)
+	}
+	checkFeeds(map[string]string{"mal-stack-82158": "Notes updated: Ruri Dragon"})
+
+	bodies["/mal-stack-38814"] = strings.Replace(stackHTML(0), "stacks/82158", "stacks/38814", 1)
+	if _, err := poller.Poll(context.Background(), byID["mal-stack-38814"]); err != nil {
+		t.Fatalf("38814 removal: %v", err)
 	}
 	checkFeeds(map[string]string{
-		"mal-stack-38814": "Notes updated: Ruri Dragon",
-		"mal-stack-82158": "Removed: Ruri Dragon",
+		"mal-stack-82158": "Notes updated: Ruri Dragon",
+		"mal-stack-38814": "Removed: Ruri Dragon",
 	})
 }

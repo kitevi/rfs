@@ -32,9 +32,9 @@ var entryCountPattern = regexp.MustCompile(`([0-9]+)\s+Entr(?:y|ies)`)
 
 // parseStack reads the canonical stack detail container. Any shape it does
 // not recognize fails closed so an unparsed page can never look like removals.
-func parseStack(doc *html.Node) (stack, error) {
-	if !isStackPage(doc) {
-		return stack{}, fmt.Errorf("unrecognized stack page: not %s", PageURL)
+func parseStack(doc *html.Node, stackID string) (stack, error) {
+	if !isStackPage(doc, stackID) {
+		return stack{}, fmt.Errorf("unrecognized stack page: not %s", PageURL(stackID))
 	}
 	declared, err := declaredCount(doc)
 	if err != nil {
@@ -82,7 +82,7 @@ func parseStack(doc *html.Node) (stack, error) {
 
 // isStackPage verifies the page's own canonical URL metadata names the watched
 // stack. A login or challenge page has no og:url and is rejected here.
-func isStackPage(doc *html.Node) bool {
+func isStackPage(doc *html.Node, stackID string) bool {
 	meta := findNode(doc, func(n *html.Node) bool {
 		return n.Type == html.ElementNode && n.Data == "meta" && attr(n, "property") == "og:url"
 	})
@@ -93,7 +93,7 @@ func isStackPage(doc *html.Node) bool {
 	if err != nil {
 		return false
 	}
-	return parsed.Host == "myanimelist.net" && parsed.Path == "/stacks/"+StackID
+	return parsed.Host == "myanimelist.net" && parsed.Path == "/stacks/"+stackID
 }
 
 // declaredCount reads the entry total MAL appends to og:description. The

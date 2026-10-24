@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
-	"github.com/kitevi/rfs/internal/sources/ptg"
+	"github.com/kitevi/rfs/internal/sources/catalog"
 )
 
 type pollFetcher struct{ result rfs.FetchResult }
@@ -46,7 +46,7 @@ func seedStaleTitles(t *testing.T, store *rfs.SQLiteStore, version int) {
 
 func pollPTG(t *testing.T, store *rfs.SQLiteStore, flow rfs.Flow) {
 	t.Helper()
-	src := rfs.Source{ID: "ptg", URL: ptg.PageURL, Flow: flow, History: rfs.DefaultCatalogHistory()}
+	src := rfs.Source{ID: "ptg", URL: catalog.PTG.PageURL(), Flow: flow, History: rfs.DefaultCatalogHistory()}
 	poller := rfs.Poller{
 		Fetcher: pollFetcher{result: rfs.FetchResult{Status: rfs.FetchModified, Page: rfs.Page(ptgCatalogPage)}},
 		Store:   store,
@@ -79,8 +79,8 @@ func TestPollRepairsLegacyTitlesOnExtractVersionChange(t *testing.T) {
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
-	seedStaleTitles(t, store, ptg.ExtractVersion-1)
-	pollPTG(t, store, ptg.Flow{})
+	seedStaleTitles(t, store, catalog.PTG.ExtractVersion-1)
+	pollPTG(t, store, catalog.PTG)
 
 	visible, err := store.LoadVisibleHistory(context.Background(), "ptg", 100, 10)
 	if err != nil {
@@ -101,8 +101,8 @@ func TestPollSkipsRebuildWhenVersionUnchanged(t *testing.T) {
 		t.Fatalf("open store: %v", err)
 	}
 	defer store.Close()
-	seedStaleTitles(t, store, ptg.ExtractVersion)
-	pollPTG(t, store, ptg.Flow{})
+	seedStaleTitles(t, store, catalog.PTG.ExtractVersion)
+	pollPTG(t, store, catalog.PTG)
 
 	if stale := stalePrefixCount(t, store); len(stale) != 2 {
 		t.Fatalf("unchanged version must not rebuild, got %d rows left", len(stale))

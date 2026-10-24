@@ -2,6 +2,7 @@ package malstack
 
 import (
 	"encoding/json"
+	"fmt"
 	"regexp"
 	"strings"
 
@@ -9,28 +10,39 @@ import (
 )
 
 const (
-	PageURL  = "https://myanimelist.net/stacks/82158"
-	HumanURL = PageURL
-	StackID  = "82158"
+	// NewAnimeIPs is "New Anime IPs with Exceptional Production Value".
+	NewAnimeIPs = "82158"
+	// NextSakuga is "The Next Sakuga Shows".
+	NextSakuga = "38814"
 	// ExtractVersion is bumped whenever Extract's output can change for a
 	// fixed page.
 	ExtractVersion = 1
 )
 
+// PageURL is the stack page rfs polls; it is also the human-facing link.
+func PageURL(stackID string) string { return "https://myanimelist.net/stacks/" + stackID }
+
 var animePath = regexp.MustCompile(`^/anime/([1-9][0-9]*)/`)
 
-type Flow struct{}
+// Flow watches one Interest Stack. Each stack is its own Source, so the two
+// keep separate baselines and feeds.
+type Flow struct {
+	StackID string
+}
 
 func (Flow) Version() int { return ExtractVersion }
 
 // Extract returns one item per anime currently in the stack. Item GUIDs are
 // MAL anime IDs; comparison state lives in the opaque description.
-func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
+func (f Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
+	if f.StackID == "" {
+		return nil, fmt.Errorf("malstack: flow without a stack ID")
+	}
 	doc, err := rfs.ParseHTML(page)
 	if err != nil {
 		return nil, err
 	}
-	stack, err := parseStack(doc)
+	stack, err := parseStack(doc, f.StackID)
 	if err != nil {
 		return nil, err
 	}

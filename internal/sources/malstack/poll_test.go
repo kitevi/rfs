@@ -35,10 +35,10 @@ func testSource(url string) rfs.Source {
 		Meta: rfs.SourceMeta{
 			Title:                "MyAnimeList: New Anime IPs with Exceptional Production Value",
 			Description:          "Observed additions, removals, and curator note edits to the Interest Stack.",
-			Link:                 malstack.HumanURL,
+			Link:                 malstack.PageURL(malstack.NewAnimeIPs),
 			ItemDescriptionsHTML: true,
 		},
-		Flow: malstack.Flow{},
+		Flow: malstack.Flow{StackID: malstack.NewAnimeIPs},
 	}
 }
 

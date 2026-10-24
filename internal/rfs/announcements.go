@@ -97,7 +97,7 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 		})
 	}
 	cache.ExtractVersion = flow.Version()
-	if err := store.CommitAnnouncements(ctx, source.ID, decision.Checkpoint, items, cache); err != nil {
+	if err := store.CommitAnnouncements(commitContext(ctx), source.ID, decision.Checkpoint, items, cache); err != nil {
 		return PollResult{}, err
 	}
 	if len(items) == 0 {

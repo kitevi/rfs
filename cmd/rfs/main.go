@@ -149,6 +149,9 @@ func main() {
 	defer store.Close()
 
 	registeredSources := sources.All()
+	if err := rfs.ValidateSources(registeredSources); err != nil {
+		log.Fatalf("sources: %v", err)
+	}
 	pollSchedules := buildPollSchedules(registeredSources, *interval)
 	gate := rfs.NewDomainGate(nil, rfs.DomainGateConfig{
 		MinSpacing:     *domainSpacing,

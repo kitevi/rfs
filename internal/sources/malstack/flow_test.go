@@ -63,7 +63,7 @@ func stackHTML(count int, entries ...testEntry) string {
 
 func observations(t *testing.T, page string) []rfs.ExtractedItem {
 	t.Helper()
-	items, err := (malstack.Flow{}).Extract(rfs.Page(page))
+	items, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Extract(rfs.Page(page))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -81,7 +81,7 @@ func TestChangesReportsAdditionsRemovalsAndNoteEdits(t *testing.T) {
 		testEntry{id: "60001", title: "Gamma", notes: ""},
 		testEntry{id: "59999", title: "Kept", notes: "Unchanged"},
 	))
-	changes, err := (malstack.Flow{}).Changes(before, after)
+	changes, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Changes(before, after)
 	if err != nil {
 		t.Fatalf("Changes: %v", err)
 	}
@@ -117,14 +117,14 @@ func TestChangesReportsAdditionsRemovalsAndNoteEdits(t *testing.T) {
 
 func TestChangesTreatsRecognizedEmptyCollectionAsRemovals(t *testing.T) {
 	before := observations(t, stackHTML(1, testEntry{id: "59878", title: "Alpha", notes: "Alpha note"}))
-	after, err := (malstack.Flow{}).Extract(rfs.Page(stackHTML(0)))
+	after, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Extract(rfs.Page(stackHTML(0)))
 	if err != nil {
 		t.Fatalf("an explicit zero-entry collection must be recognized: %v", err)
 	}
 	if len(after) != 0 {
 		t.Fatalf("expected no anime, got %d", len(after))
 	}
-	changes, err := (malstack.Flow{}).Changes(before, after)
+	changes, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Changes(before, after)
 	if err != nil {
 		t.Fatalf("Changes: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestChangesIgnoresUnchangedObservationsAndPresentationNoise(t *testing.T) {
 		testEntry{id: "60000", title: "Beta renamed", notes: "Beta note"},
 		testEntry{id: "59878", title: "Alpha", notes: "Same&nbsp;  note"},
 	))
-	changes, err := (malstack.Flow{}).Changes(before, after)
+	changes, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Changes(before, after)
 	if err != nil {
 		t.Fatalf("Changes: %v", err)
 	}
@@ -155,7 +155,7 @@ func TestFlowStoresCanonicalNoteLines(t *testing.T) {
 	notes := `Line one.<br><br>  Line   two &amp; more. <a href="https://example.com/x">Trailer</a>` +
 		`<script>bad()</script><a href="javascript:evil()">skip</a>`
 	page := strings.Replace(stackPage, "First paragraph.<br><br>Second &amp; final.", notes, 1)
-	items, err := (malstack.Flow{}).Extract(rfs.Page(page))
+	items, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Extract(rfs.Page(page))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -193,7 +193,7 @@ func TestFlowTakesEntryCountFromTrailingTotal(t *testing.T) {
 	page = strings.Replace(page,
 		`content="MyAnimeList - Interest Stacks - 2 Entries, 270 Restacks"`,
 		`content="Curator's picks: 12 Entries worth rewatching. MyAnimeList - Interest Stacks - 2 Entries, 270 Restacks"`, 1)
-	items, err := (malstack.Flow{}).Extract(rfs.Page(page))
+	items, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Extract(rfs.Page(page))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -204,7 +204,7 @@ func TestFlowTakesEntryCountFromTrailingTotal(t *testing.T) {
 
 func TestFlowRejectsCardWithoutNotesWrapper(t *testing.T) {
 	page := strings.Replace(stackPage, `<div class="intro">First paragraph.<br><br>Second &amp; final.</div>`, "", 1)
-	if _, err := (malstack.Flow{}).Extract(rfs.Page(page)); err == nil {
+	if _, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Extract(rfs.Page(page)); err == nil {
 		t.Fatal("expected a card without a recognized notes wrapper to be rejected")
 	}
 }
@@ -223,7 +223,7 @@ func TestFlowRejectsIncompleteOrUnrecognizedPages(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := (malstack.Flow{}).Extract(rfs.Page(tc.page)); err == nil {
+			if _, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Extract(rfs.Page(tc.page)); err == nil {
 				t.Fatal("expected the page to be rejected, got a complete observation")
 			}
 		})
@@ -231,7 +231,7 @@ func TestFlowRejectsIncompleteOrUnrecognizedPages(t *testing.T) {
 }
 
 func TestFlowExtractsOnlyStackAnime(t *testing.T) {
-	items, err := (malstack.Flow{}).Extract(rfs.Page(stackPage))
+	items, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Extract(rfs.Page(stackPage))
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
 	}
@@ -244,5 +244,21 @@ func TestFlowExtractsOnlyStackAnime(t *testing.T) {
 	}
 	if item.PubDate != nil {
 		t.Fatal("upstream has no item publication date; expected observation-time fallback")
+	}
+}
+
+// TestFlowReadsOnlyItsOwnStack verifies that each watched stack accepts its
+// own page and rejects the other's, so one Flow type can serve both Sources
+// without a misrouted page ever looking like a wholesale removal.
+func TestFlowReadsOnlyItsOwnStack(t *testing.T) {
+	sakugaPage := strings.Replace(stackPage, "stacks/82158", "stacks/38814", 1)
+	if _, err := (malstack.Flow{StackID: malstack.NextSakuga}).Extract(rfs.Page(sakugaPage)); err != nil {
+		t.Fatalf("38814 flow rejected its own page: %v", err)
+	}
+	if _, err := (malstack.Flow{StackID: malstack.NextSakuga}).Extract(rfs.Page(stackPage)); err == nil {
+		t.Fatal("38814 flow accepted the 82158 page")
+	}
+	if _, err := (malstack.Flow{}).Extract(rfs.Page(stackPage)); err == nil {
+		t.Fatal("a flow without a stack ID accepted a page")
 	}
 }

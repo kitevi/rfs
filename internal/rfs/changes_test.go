@@ -48,46 +48,6 @@ func newEmissionStore(t *testing.T) *SQLiteStore {
 	return store
 }
 
-func TestPollerPublishesFirstObservationWhenInitialEmissionEnabled(t *testing.T) {
-	ctx := context.Background()
-	store := newEmissionStore(t)
-	flow := &emissionFlow{items: []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}, version: 1}
-	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow, EmitInitial: true}
-	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
-
-	first, err := poller.Poll(ctx, source)
-	if err != nil {
-		t.Fatalf("first poll: %v", err)
-	}
-	if first.Status != PollUpdated {
-		t.Fatalf("first poll status = %v, want updated", first.Status)
-	}
-	items, err := store.LoadSnapshot(ctx, "notices")
-	if err != nil {
-		t.Fatalf("load snapshot: %v", err)
-	}
-	if len(items) != 1 || items[0].GUID != "notices:1:a" || items[0].Title != "changed a" {
-		t.Fatalf("first observation published %#v, want one announcement", items)
-	}
-
-	// A restart re-polls the same unchanged observation through a new Poller.
-	restarted := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
-	second, err := restarted.Poll(ctx, source)
-	if err != nil {
-		t.Fatalf("restart poll: %v", err)
-	}
-	if second.Status != PollUnchanged {
-		t.Fatalf("restart poll status = %v, want unchanged", second.Status)
-	}
-	items, err = store.LoadSnapshot(ctx, "notices")
-	if err != nil {
-		t.Fatalf("load snapshot: %v", err)
-	}
-	if len(items) != 1 {
-		t.Fatalf("restart duplicated the first observation: %#v", items)
-	}
-}
-
 func TestPollerKeepsFirstObservationSilentByDefault(t *testing.T) {
 	ctx := context.Background()
 	store := newEmissionStore(t)
@@ -118,7 +78,7 @@ func TestPollerRebaselinesSilentlyOnVersionBump(t *testing.T) {
 	ctx := context.Background()
 	store := newEmissionStore(t)
 	flow := &emissionFlow{items: []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}, version: 1}
-	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow, EmitInitial: true}
+	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
 	if _, err := poller.Poll(ctx, source); err != nil {
 		t.Fatalf("first poll: %v", err)
@@ -134,7 +94,7 @@ func TestPollerRebaselinesSilentlyOnVersionBump(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load snapshot: %v", err)
 	}
-	if len(items) != 1 {
+	if len(items) != 0 {
 		t.Fatalf("version bump emitted %#v, want a silent rebaseline", items)
 	}
 	state, err := store.LoadChangeState(ctx, "notices")
@@ -146,48 +106,14 @@ func TestPollerRebaselinesSilentlyOnVersionBump(t *testing.T) {
 	}
 }
 
-func TestPollerAnnouncesNewlyCoveredItemsAcrossAnExtractVersionChange(t *testing.T) {
-	ctx := context.Background()
-	store := newEmissionStore(t)
-	flow := &emissionFlow{items: []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}, version: 1}
-	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow, EmitInitial: true, EmitVersionChanges: true}
-	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
-	if _, err := poller.Poll(ctx, source); err != nil {
-		t.Fatalf("first poll: %v", err)
-	}
-
-	// The Flow widens its scope while the upstream state of the known item
-	// stays exactly as it was.
-	flow.version = 2
-	flow.items = []ExtractedItem{
-		{GUID: "a", Title: "A", Description: "state-a"},
-		{GUID: "b", Title: "B", Description: "state-b"},
-	}
-	if _, err := poller.Poll(ctx, source); err != nil {
-		t.Fatalf("version change poll: %v", err)
-	}
-	items, err := store.LoadSnapshot(ctx, "notices")
-	if err != nil {
-		t.Fatalf("load snapshot: %v", err)
-	}
-	want := []string{"notices:1:a", "notices:2:b"}
-	if len(items) != len(want) {
-		t.Fatalf("emitted %#v, want the first observation and the newly covered item", items)
-	}
-	for i, guid := range want {
-		if items[i].GUID != guid {
-			t.Fatalf("item %d GUID = %q, want %q", i, items[i].GUID, guid)
-		}
-	}
-}
-
 func TestPollerEmitsDistinctRevisionGUIDsForRepeatedTransitions(t *testing.T) {
 	ctx := context.Background()
 	store := newEmissionStore(t)
 	flow := &emissionFlow{items: []ExtractedItem{{GUID: "a", Title: "A", Description: "a"}}, version: 1}
-	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow, EmitInitial: true}
+	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
-	for _, state := range []string{"a", "b", "a"} {
+	// The first observation is the silent baseline; each later one is a change.
+	for _, state := range []string{"a", "b", "a", "b"} {
 		flow.items = []ExtractedItem{{GUID: "a", Title: "A", Description: state}}
 		if _, err := poller.Poll(ctx, source); err != nil {
 			t.Fatalf("poll %s: %v", state, err)
@@ -208,43 +134,37 @@ func TestPollerEmitsDistinctRevisionGUIDsForRepeatedTransitions(t *testing.T) {
 	}
 }
 
-// clockedEmissionFlow is an emissionFlow that also implements
-// ClockedChangeFlow, recording the instant it was asked to compare at and
-// stamping emitted items with a Flow-supplied publication date.
-type clockedEmissionFlow struct {
+// datedEmissionFlow is an emissionFlow that stamps emitted changes with a
+// Flow-supplied publication date.
+type datedEmissionFlow struct {
 	emissionFlow
-	at      time.Time
-	pubDate *time.Time
+	pubDate time.Time
 }
 
-func (f *clockedEmissionFlow) ChangesAt(at time.Time, previous, current []ExtractedItem) ([]ExtractedItem, error) {
-	f.at = at
+func (f *datedEmissionFlow) Changes(previous, current []ExtractedItem) ([]ExtractedItem, error) {
 	changes, err := f.emissionFlow.Changes(previous, current)
-	if err != nil || f.pubDate == nil {
-		return changes, err
-	}
 	for i := range changes {
-		changes[i].PubDate = f.pubDate
+		changes[i].PubDate = &f.pubDate
 	}
-	return changes, nil
+	return changes, err
 }
 
-func TestPollerComparesAtTheClockInstantAndHonorsExtractedPubDate(t *testing.T) {
+func TestPollerHonorsExtractedChangePubDate(t *testing.T) {
 	ctx := context.Background()
 	store := newEmissionStore(t)
 	published := time.Date(2026, 9, 4, 10, 6, 44, 0, time.UTC)
-	flow := &clockedEmissionFlow{pubDate: &published}
+	flow := &datedEmissionFlow{pubDate: published}
 	flow.items = []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}
 	flow.version = 1
-	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow, EmitInitial: true}
-	at := time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)
-	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: at}}
+	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow}
+	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC)}}
 
 	if _, err := poller.Poll(ctx, source); err != nil {
-		t.Fatalf("poll: %v", err)
+		t.Fatalf("baseline poll: %v", err)
 	}
-	if !flow.at.Equal(at) {
-		t.Fatalf("comparison ran at %v, want the injected clock instant %v", flow.at, at)
+	flow.items = []ExtractedItem{{GUID: "a", Title: "A", Description: "state-b"}}
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatalf("change poll: %v", err)
 	}
 	items, err := store.LoadSnapshot(ctx, "notices")
 	if err != nil {
@@ -254,7 +174,7 @@ func TestPollerComparesAtTheClockInstantAndHonorsExtractedPubDate(t *testing.T) 
 		t.Fatalf("published %#v, want one item", items)
 	}
 	if !items[0].PubDate.Equal(published) {
-		t.Fatalf("pubDate = %v, want the notice's own publication time %v", items[0].PubDate, published)
+		t.Fatalf("pubDate = %v, want the Flow's own publication time %v", items[0].PubDate, published)
 	}
 	if items[0].GUID != "notices:1:a" {
 		t.Fatalf("GUID = %q, want the revision GUID", items[0].GUID)

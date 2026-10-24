@@ -5,28 +5,29 @@ import (
 	"time"
 )
 
-// Loop polls on a fixed interval until ctx is cancelled. On cancellation it
-// waits for an in-flight poll to finish (drain) rather than hard-cutting it,
-// so a snapshot save in progress is allowed to commit before the process
-// exits or re-execs. Each poll runs under a per-poll timeout (PollTimeout,
-// default 2m) on a context independent of the shutdown signal — a
-// cancellation stops the next poll from starting, never the one in flight,
-// and a stuck poll is cut by its own timeout so drain always terminates.
+// Loop polls on a fixed interval until ctx is cancelled. Cancellation reaches
+// the in-flight poll, which stops at its next request or gate wait; Run then
+// waits for it to return (drain), so the process never exits or re-execs under
+// a running poll. Stopping a poll early is safe because every poll commits its
+// items, state and fetch validators in one transaction that does not observe
+// cancellation (ADR 0013): a poll that stopped before committing left nothing
+// behind, and the next start redoes it.
 type Loop struct {
 	Poll     func(context.Context)
 	Interval time.Duration
 
-	// PollTimeout bounds a single poll. A stuck in-flight poll is cut by its
-	// own per-poll context — never by the shutdown signal — so shutdown drain
-	// always terminates even if an upstream hangs. Defaults to 2 minutes
-	// when zero, generous for the static single-page sources rfs polls.
+	// PollTimeout bounds a single poll cycle. It defaults to Interval when
+	// zero, so a cycle may run until the next one is due. A cycle has to fit
+	// every follow-up request its sources make under the domain gate's
+	// spacing, so a fixed short bound would cut a healthy poll that has many
+	// pages to read and repeat the same work every cycle.
 	PollTimeout time.Duration
 }
 
 func (l Loop) Run(ctx context.Context) {
 	pollTimeout := l.PollTimeout
 	if pollTimeout <= 0 {
-		pollTimeout = 2 * time.Minute
+		pollTimeout = l.Interval
 	}
 
 	for {
@@ -34,10 +35,10 @@ func (l Loop) Run(ctx context.Context) {
 			return
 		}
 		started := time.Now()
-		// The poll context is unrelated to the shutdown signal: cancellation
-		// drains the in-flight poll instead of aborting it. Its own timeout
-		// cuts a stuck poll, and running it synchronously prevents overlap.
-		pollCtx, cancel := context.WithTimeout(context.Background(), pollTimeout)
+		// The poll context follows the shutdown signal, so shutdown stops the
+		// poll between requests instead of waiting for every remaining one.
+		// Running it synchronously prevents overlap.
+		pollCtx, cancel := context.WithTimeout(ctx, pollTimeout)
 		l.Poll(pollCtx)
 		cancel()
 

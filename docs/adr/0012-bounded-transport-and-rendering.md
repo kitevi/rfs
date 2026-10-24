@@ -1,5 +1,8 @@
 # Transport requests are bounded, and Flow HTML is allowlisted
 
+> **Status: amended by 0013.** The poll cycle deadline now defaults to the poll
+> interval; the per-request timeout below is unchanged.
+
 rfs talks to an untrusted network over a long-lived process, and its feed pages
 render markup that Flows build. Six assumptions there were wrong by omission.
 

@@ -116,7 +116,6 @@ To verify live access and parsing without touching your database:
 
 ```sh
 RFS_TEST_MALSTACK_LIVE=1 go test ./internal/sources/malstack -run TestLiveMALStack -v -count=1
-RFS_TEST_MALSTACK38814_LIVE=1 go test ./internal/sources/malstack38814 -run TestLiveMALStack -v -count=1
 ```
 
 ### A Closer Listen recommendations

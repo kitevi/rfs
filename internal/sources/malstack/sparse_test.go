@@ -63,7 +63,7 @@ func TestChangesHandlesSparseAnime(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			changes, err := (malstack.Flow{}).Changes(tc.previous, tc.current)
+			changes, err := (malstack.Flow{StackID: malstack.NewAnimeIPs}).Changes(tc.previous, tc.current)
 			if err != nil {
 				t.Fatalf("Changes: %v", err)
 			}
