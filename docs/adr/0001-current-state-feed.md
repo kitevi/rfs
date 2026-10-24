@@ -3,7 +3,8 @@
 > **Status: amended.** This still describes projection Sources (Meltzer,
 > Coached). Catalog history (0007), change feeds (0008) and announcement
 > checkpoints (0010) depend on stored state by design; read those for the
-> other Sources.
+> other Sources. 0014 lets a projection read undated items' dates from their
+> own pages.
 
 Each source's RSS feed is rebuilt from the source's *current* content on every poll and reflects the items currently present — it is not an append-only log of additions rfs has detected over time. Item pubDates come from the source itself (e.g. a match date on a Wikipedia list), falling back to rfs's discovery time only when the Flow can't extract a date.
 

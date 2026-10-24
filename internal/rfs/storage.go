@@ -68,6 +68,12 @@ func (s *SQLiteStore) init(ctx context.Context) error {
 			seen_at TEXT NOT NULL,
 			PRIMARY KEY (source_id, guid)
 		)`,
+		`CREATE TABLE IF NOT EXISTS item_dates (
+			source_id TEXT NOT NULL,
+			guid TEXT NOT NULL,
+			pub_date TEXT NOT NULL,
+			PRIMARY KEY (source_id, guid)
+		)`,
 		`CREATE TABLE IF NOT EXISTS fetch_cache (
 			source_id TEXT PRIMARY KEY,
 			etag TEXT NOT NULL DEFAULT '',

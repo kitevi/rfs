@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
 )
@@ -143,6 +144,54 @@ func TestExtractRejectsPagesWithoutTheEssaySection(t *testing.T) {
 	for i, page := range pages {
 		if _, err := (Flow{}).Extract(page); err == nil || !strings.Contains(err.Error(), "no essays") {
 			t.Fatalf("page %d error = %v, want a rejection", i, err)
+		}
+	}
+}
+
+func TestItemDateURLIsTheEssayLink(t *testing.T) {
+	item := rfs.ExtractedItem{GUID: guidPrefix + "you-never-stop-being-nervous", Link: "https://coached.com/essays/you-never-stop-being-nervous/"}
+	url, err := Flow{}.ItemDateURL(item)
+	if err != nil || url != item.Link {
+		t.Fatalf("ItemDateURL = %q, %v; want %q", url, err, item.Link)
+	}
+	for _, link := range []string{
+		"https://example.com/essays/you-never-stop-being-nervous/",
+		"https://coached.com/essays/issues/",
+		"https://coached.com.example.com/essays/you-never-stop-being-nervous/",
+		"",
+	} {
+		if _, err := (Flow{}).ItemDateURL(rfs.ExtractedItem{GUID: "x", Link: link}); err == nil {
+			t.Fatalf("ItemDateURL(%q) succeeded, want an error", link)
+		}
+	}
+}
+
+func TestItemDateReadsPublishedTime(t *testing.T) {
+	item := rfs.ExtractedItem{GUID: guidPrefix + "you-never-stop-being-nervous"}
+	for content, want := range map[string]time.Time{
+		"2026-08-28":                time.Date(2026, 8, 28, 0, 0, 0, 0, time.UTC),
+		"2026-08-28T09:30:00+02:00": time.Date(2026, 8, 28, 7, 30, 0, 0, time.UTC),
+	} {
+		page := rfs.Page(`<html><head><meta property="og:type" content="article"><meta property="article:published_time" content="` + content + `"></head><body></body></html>`)
+		date, err := Flow{}.ItemDate(page, item)
+		if err != nil {
+			t.Fatalf("ItemDate(%q): %v", content, err)
+		}
+		if !date.Equal(want) || date.Location() != time.UTC {
+			t.Fatalf("ItemDate(%q) = %v, want %v", content, date, want)
+		}
+	}
+}
+
+func TestItemDateRejectsPagesWithoutAReadableDate(t *testing.T) {
+	item := rfs.ExtractedItem{GUID: guidPrefix + "you-never-stop-being-nervous"}
+	for _, page := range []rfs.Page{
+		rfs.Page(`<html><head><title>No date</title></head></html>`),
+		rfs.Page(`<html><head><meta property="article:published_time" content="August 28"></head></html>`),
+		rfs.Page(``),
+	} {
+		if _, err := (Flow{}).ItemDate(page, item); err == nil {
+			t.Fatalf("ItemDate(%q) succeeded, want an error", page)
 		}
 	}
 }

@@ -133,6 +133,16 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 		return p.pollChanges(ctx, source, changes, extracted, savedCache)
 	}
 
+	extracted, datesPending, err := p.dateItems(ctx, source, extracted)
+	if err != nil {
+		return pollFailure(err)
+	}
+	if datesPending {
+		// A 304 for the collection would skip the retry of an unread item
+		// page, so drop the validators until every date is known.
+		savedCache.ETag, savedCache.LastModified = "", ""
+	}
+
 	items := make([]Item, 0, len(extracted))
 	seenGUIDs := map[string]struct{}{}
 	for _, item := range extracted {

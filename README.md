@@ -148,9 +148,12 @@ catalog in a `<noscript>` fallback under the heading All essays; the same list
 is what the All essays tab shows once JavaScript runs. Newsletter issue pages
 are not items: each one is one current essay, one older essay, and other links.
 
-Essays on the index have titles and links but no dates, so an item's pubDate is
-the time rfs first saw it. The first poll dates the whole library at once. An
-essay added later gets a later date.
+Essays on the index have titles and links but no dates. rfs fetches each
+essay's own page once, reads its `article:published_time`, and remembers it, so
+later polls fetch only essays it has not dated yet. The site sometimes moves an
+essay to a new slug; the moved essay gets a new GUID, but it keeps its original
+date instead of sorting above this week's essay. An essay whose page cannot be
+read is dated by when rfs first saw it, and the next poll tries its page again.
 
 The fallback is text to x/net/html, so the Flow parses it a second time and
 reads only the All essays section. A page that stops listing that section fails

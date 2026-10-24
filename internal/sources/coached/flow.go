@@ -9,9 +9,11 @@
 // follow them.
 //
 // The index gives each essay a title and a link, but no date. Extract leaves
-// pubDate unset so rfs stamps the time it first saw the essay
-// (docs/adr/0001-current-state-feed.md). The feed stays a projection of the
-// essays the page currently lists.
+// pubDate unset, and rfs reads it from the essay's own page through ItemDate,
+// so an essay the site re-slugs keeps its original date instead of looking
+// new. Only an essay whose page cannot be read falls back to the time rfs
+// first saw it (docs/adr/0001-current-state-feed.md). The feed stays a
+// projection of the essays the page currently lists.
 package coached
 
 import (
@@ -19,6 +21,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
@@ -36,7 +39,7 @@ const (
 	// ExtractVersion is the derivation version for the Coached essays Flow.
 	// Bump it whenever Extract's output can change for a fixed page so rfs
 	// forces a full re-derivation instead of trusting a stale HTTP 304.
-	ExtractVersion = 1
+	ExtractVersion = 2
 
 	// siteHost owns the essay pages the index links to.
 	siteHost = "coached.com"
@@ -48,6 +51,9 @@ const (
 	// essayHeading is the fallback heading whose following links are the
 	// catalog. The next heading starts the newsletter archive.
 	essayHeading = "All essays"
+
+	// publishedProperty is the Open Graph meta tag that dates an essay page.
+	publishedProperty = "article:published_time"
 )
 
 // essayPath matches an essay link. A relative path is required, so a link to
@@ -96,6 +102,38 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 		return nil, errors.New("coached: no essays")
 	}
 	return items, nil
+}
+
+// ItemDateURL names the essay page that dates an item: the link Extract built.
+func (Flow) ItemDateURL(item rfs.ExtractedItem) (string, error) {
+	path, found := strings.CutPrefix(item.Link, "https://"+siteHost)
+	if _, _, ok := essayRef(path); !found || !ok {
+		return "", fmt.Errorf("coached: %s has no essay link", item.GUID)
+	}
+	return item.Link, nil
+}
+
+// ItemDate reads an essay's publication date from its article:published_time
+// tag. The site writes a bare date, which is taken as midnight UTC; a full
+// timestamp is accepted too.
+func (Flow) ItemDate(page rfs.Page, item rfs.ExtractedItem) (time.Time, error) {
+	doc, err := rfs.ParseHTML(page)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("coached: parse %s: %w", item.GUID, err)
+	}
+	for _, meta := range elementNodes(doc, "meta") {
+		if attr(meta, "property") != publishedProperty {
+			continue
+		}
+		value := strings.TrimSpace(attr(meta, "content"))
+		for _, layout := range []string{time.DateOnly, time.RFC3339} {
+			if date, err := time.Parse(layout, value); err == nil {
+				return date.UTC(), nil
+			}
+		}
+		return time.Time{}, fmt.Errorf("coached: %s has unreadable %s %q", item.GUID, publishedProperty, value)
+	}
+	return time.Time{}, fmt.Errorf("coached: %s has no %s", item.GUID, publishedProperty)
 }
 
 // essaySectionAnchors returns the anchors in each <noscript> fallback's All
