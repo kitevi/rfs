@@ -6,7 +6,9 @@
 // belongs to an album, are that album. A track with no album is its own
 // release. A YouTube embed is that video. A bold artist followed by an italic
 // title is that album, so a name written in the lede is announced even when
-// the player under it is a different recording. Other players are not releases.
+// the player under it is a different recording. When the player is that same
+// album, by artist and title, the two are one release. Other players are not
+// releases.
 package acloserlisten
 
 import (
@@ -39,8 +41,8 @@ const (
 	ExtractVersion = 4
 
 	// CheckpointVersion is the announcement checkpoint schema version. Track
-	// resolutions are an optional field on version 1 so an existing checkpoint
-	// still loads.
+	// resolutions and album names are optional fields on version 1 so an
+	// existing checkpoint still loads.
 	CheckpointVersion = 1
 
 	// guidPrefix makes an album's Bandcamp ID recoverable from its GUID and

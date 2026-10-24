@@ -187,3 +187,44 @@ func TestHTTPHandlerReturns404ForUnknownFeedFormat(t *testing.T) {
 		t.Fatalf("status = %d, body = %s; want 404 for unknown format", recorder.Code, recorder.Body.String())
 	}
 }
+
+func TestHTTPHandlerAnswersHeadAndConditionalRequests(t *testing.T) {
+	store, err := OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer store.Close()
+	if err := store.SaveSnapshot(t.Context(), "meltzer", []Item{{
+		GUID: "meltzer:1", Title: "Match", Link: "https://example.com/meltzer", PubDate: time.Date(1982, 4, 7, 0, 0, 0, 0, time.UTC),
+	}}); err != nil {
+		t.Fatalf("save snapshot: %v", err)
+	}
+	handler := NewHTTPHandler(store, []Source{{ID: "meltzer", Meta: SourceMeta{Title: "Meltzer", Link: "https://example.com/meltzer"}}}, testBuildInfo)
+
+	get := httptest.NewRecorder()
+	handler.ServeHTTP(get, httptest.NewRequest(http.MethodGet, "/feeds/meltzer.xml", nil))
+	etag := get.Header().Get("ETag")
+	if get.Code != http.StatusOK || etag == "" {
+		t.Fatalf("GET status = %d, ETag = %q", get.Code, etag)
+	}
+
+	head := httptest.NewRecorder()
+	handler.ServeHTTP(head, httptest.NewRequest(http.MethodHead, "/feeds/meltzer.xml", nil))
+	if head.Code != http.StatusOK || head.Header().Get("ETag") != etag || !strings.HasPrefix(head.Header().Get("Content-Type"), "application/rss+xml") {
+		t.Fatalf("HEAD status = %d, headers = %v", head.Code, head.Header())
+	}
+
+	conditional := httptest.NewRequest(http.MethodGet, "/feeds/meltzer.xml", nil)
+	conditional.Header.Set("If-None-Match", etag)
+	unchanged := httptest.NewRecorder()
+	handler.ServeHTTP(unchanged, conditional)
+	if unchanged.Code != http.StatusNotModified || unchanged.Body.Len() != 0 {
+		t.Fatalf("conditional GET status = %d, body = %q", unchanged.Code, unchanged.Body.String())
+	}
+
+	post := httptest.NewRecorder()
+	handler.ServeHTTP(post, httptest.NewRequest(http.MethodPost, "/feeds/meltzer.xml", nil))
+	if post.Code != http.StatusMethodNotAllowed || post.Header().Get("Allow") != "GET, HEAD" {
+		t.Fatalf("POST status = %d, Allow = %q", post.Code, post.Header().Get("Allow"))
+	}
+}

@@ -25,7 +25,7 @@ func TestFilmFlowEmitsLiveThread(t *testing.T) {
 	if item.Link != "https://boards.4chan.org/tv/thread/222965645/" {
 		t.Fatalf("unexpected link: %q", item.Link)
 	}
-	if item.Title != "Arthouse & Classics" {
+	if item.Title != "Arthouse & Classics \u2014 Guiltydition" {
 		t.Fatalf("unexpected title: %q", item.Title)
 	}
 	wantDate := time.Unix(1788463410, 0).UTC()
@@ -105,7 +105,7 @@ func TestFilmFlowDecodesComFragment(t *testing.T) {
 	if items[0].Description != wantDesc {
 		t.Fatalf("unexpected description: %q, want %q", items[0].Description, wantDesc)
 	}
-	if items[0].Title != "Thread for the discussion of arthouse and classic cinema." {
+	if items[0].Title != "Arthouse & Classics \u2014 Don Carlo edition" {
 		t.Fatalf("unexpected title: %q", items[0].Title)
 	}
 }
@@ -134,7 +134,7 @@ func TestFilmFlowVersion(t *testing.T) {
 	if catalog.Film.Version() != catalog.Film.ExtractVersion {
 		t.Fatalf("Version() = %d, want %d", catalog.Film.Version(), catalog.Film.ExtractVersion)
 	}
-	if catalog.Film.ExtractVersion != 5 {
-		t.Fatalf("ExtractVersion = %d, want 5 (history rebuild must replay over stored rows)", catalog.Film.ExtractVersion)
+	if catalog.Film.ExtractVersion != 6 {
+		t.Fatalf("ExtractVersion = %d, want 6 (history rebuild must replay over stored rows)", catalog.Film.ExtractVersion)
 	}
 }

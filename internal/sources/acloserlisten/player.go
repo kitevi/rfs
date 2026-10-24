@@ -12,10 +12,11 @@ import (
 )
 
 // PlanIdentities rewrites track players whose release was already resolved and
-// reports the rest. Album players are already final, so the usual genre-section
-// page performs no extra fetches.
+// reports the rest, along with album players whose name is not yet known. Each
+// album player is read once, so a later poll of the same page fetches nothing.
 func (Flow) PlanIdentities(raw json.RawMessage, current []rfs.ExtractedItem) ([]rfs.ExtractedItem, []rfs.ExtractedItem, error) {
 	known := map[string]string{}
+	named := map[string]bool{}
 	if len(raw) > 0 {
 		state, err := decodeCheckpoint(raw)
 		if err != nil {
@@ -29,6 +30,9 @@ func (Flow) PlanIdentities(raw json.RawMessage, current []rfs.ExtractedItem) ([]
 				return nil, nil, err
 			}
 			known[id] = key
+		}
+		for key := range state.Names {
+			named[key] = true
 		}
 	}
 	seen := map[string]bool{}
@@ -51,6 +55,9 @@ func (Flow) PlanIdentities(raw json.RawMessage, current []rfs.ExtractedItem) ([]
 				unresolved = true
 			}
 		}
+		if rel.kind == releaseAlbum && !named[rel.checkpointKey()] {
+			unresolved = true
+		}
 		if seen[item.GUID] {
 			continue
 		}
@@ -66,62 +73,87 @@ func (Flow) PlanIdentities(raw json.RawMessage, current []rfs.ExtractedItem) ([]
 	return ready, pending, nil
 }
 
-// IdentityURL names the track player that can say whether this embed is an
-// album or a standalone track.
+// IdentityURL names the player that can say whether a track embed is an album
+// or a standalone track, and what an album is called.
 func (Flow) IdentityURL(item rfs.ExtractedItem) (string, error) {
 	rel, err := itemRelease(item.GUID)
 	if err != nil {
 		return "", err
 	}
-	if rel.kind != releaseTrack {
+	if rel.kind != releaseTrack && rel.kind != releaseAlbum {
 		return "", fmt.Errorf("acloserlisten: release %s does not need identity resolution", rel.id)
 	}
 	return rel.playerURL(), nil
 }
 
 // ResolveIdentity turns a track player into the album it belongs to. A player
-// with no album stays the track. The note on Metadata tells Evaluate which
-// track was resolved; Evaluate removes it before publishing.
+// with no album stays the track. An album, embedded or reached through a track,
+// is titled from its player and noted with the names the lede could give it.
+// The note on Metadata tells Evaluate what was resolved; Evaluate removes it
+// before publishing.
 func (Flow) ResolveIdentity(page rfs.Page, item rfs.ExtractedItem) (rfs.ExtractedItem, error) {
 	rel, err := itemRelease(item.GUID)
 	if err != nil {
 		return rfs.ExtractedItem{}, err
 	}
-	if rel.kind != releaseTrack {
+	if rel.kind != releaseTrack && rel.kind != releaseAlbum {
 		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: release %s does not need identity resolution", rel.id)
 	}
 	meta, err := loadPlayer(page, rel.id)
 	if err != nil {
 		return rfs.ExtractedItem{}, err
 	}
+	if rel.kind == releaseAlbum {
+		if meta.AlbumID == nil || strconv.FormatInt(*meta.AlbumID, 10) != rel.id {
+			return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: player %s serves a different album", rel.id)
+		}
+		return noteAlbum(item, meta, identityNote{Release: rel.checkpointKey()})
+	}
 	if _, _, ok := trackFields(meta, rel.id); !ok {
 		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: player %s does not contain that track", rel.id)
 	}
-	releaseKey := rel.checkpointKey()
-	albumID := int64(0)
-	if meta.AlbumID != nil {
-		albumID = *meta.AlbumID
-	}
-	if albumID > 0 {
-		album := release{kind: releaseAlbum, id: strconv.FormatInt(albumID, 10)}
+	if meta.AlbumID != nil && *meta.AlbumID > 0 {
+		album := release{kind: releaseAlbum, id: strconv.FormatInt(*meta.AlbumID, 10)}
 		item.GUID = album.guid()
-		releaseKey = album.checkpointKey()
+		return noteAlbum(item, meta, identityNote{Track: rel.id, Release: album.checkpointKey()})
 	}
-	note, err := json.Marshal(identityNote{Track: rel.id, Release: releaseKey})
+	return withNote(item, identityNote{Track: rel.id, Release: rel.checkpointKey()})
+}
+
+// noteAlbum titles an album item from its player and notes its prose names. A
+// player without a usable artist and title leaves the title to
+// EnrichAnnouncement, which rejects it, and notes no names.
+func noteAlbum(item rfs.ExtractedItem, meta bandcampPlayer, note identityNote) (rfs.ExtractedItem, error) {
+	artist := strings.TrimSpace(textValue(meta.Artist))
+	title := strings.TrimSpace(textValue(meta.AlbumTitle))
+	note.Names = []string{}
+	if artist != "" && title != "" {
+		item.Title = artist + " — " + title
+		note.Names = albumNames(artist, title)
+	}
+	return withNote(item, note)
+}
+
+func withNote(item rfs.ExtractedItem, note identityNote) (rfs.ExtractedItem, error) {
+	encoded, err := json.Marshal(note)
 	if err != nil {
 		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: encode identity note: %w", err)
 	}
-	item.Metadata = string(note)
+	item.Metadata = string(encoded)
 	return item, nil
 }
 
 // AnnouncementEnrichmentURL names the Bandcamp player that carries a release's
 // artist and title. The URL is built from the validated ID, never from the
-// page's own iframe markup.
+// page's own iframe markup. An album ResolveIdentity already titled in this
+// poll needs no second fetch.
 func (Flow) AnnouncementEnrichmentURL(item rfs.ExtractedItem) (string, error) {
 	rel, err := itemRelease(item.GUID)
 	if err != nil {
 		return "", err
+	}
+	if rel.kind == releaseAlbum && item.Title != "" {
+		return "", nil
 	}
 	return rel.playerURL(), nil
 }
@@ -174,8 +206,11 @@ func (Flow) EnrichAnnouncement(page rfs.Page, item rfs.ExtractedItem) (rfs.Extra
 }
 
 // enrichYouTube titles a video from its oEmbed response. A title that already
-// begins with the channel name keeps the remainder, so "Max Richter - Now We
-// Can Sing" becomes "Max Richter — Now We Can Sing".
+// begins with the channel's artist keeps the remainder, so "Max Richter - Now
+// We Can Sing" becomes "Max Richter — Now We Can Sing". The artist is matched
+// by letters and digits after dropping a VEVO or " - Topic" channel suffix,
+// and the title's own spelling of it is kept: channel MaxRichterVEVO still
+// publishes "Max Richter — Now We Can Sing".
 func enrichYouTube(page rfs.Page, item rfs.ExtractedItem, id string) (rfs.ExtractedItem, error) {
 	var meta struct {
 		Title  *string `json:"title"`
@@ -189,9 +224,11 @@ func enrichYouTube(page rfs.Page, item rfs.ExtractedItem, id string) (rfs.Extrac
 	if title == "" || author == "" {
 		return rfs.ExtractedItem{}, fmt.Errorf("acloserlisten: video %s has no artist and title", id)
 	}
+	artist := strings.TrimSuffix(strings.TrimSuffix(author, " - Topic"), "VEVO")
 	for _, sep := range []string{" — ", " – ", " - "} {
-		if rest, ok := strings.CutPrefix(title, author+sep); ok {
-			title = strings.TrimSpace(rest)
+		lead, rest, ok := strings.Cut(title, sep)
+		if ok && nameSlug(lead) != "" && nameSlug(lead) == nameSlug(artist) {
+			author, title = strings.TrimSpace(lead), strings.TrimSpace(rest)
 			break
 		}
 	}

@@ -126,8 +126,12 @@ announce only releases that have not been announced before. An album player is
 that album. A track player that belongs to an album is that same album. A track
 with no album is announced once, as the track. A YouTube embed is announced
 once, as that video. A bold artist followed by an italic title is announced
-once, as that album. Other players are ignored. Returning releases and
-editorial changes do not create duplicates.
+once, as that album. An album named that way and an album player with the same
+artist and title (ignoring a trailing format word such as EP, or a bracketed
+note) are one release: the player is announced when both are on the page, and
+whichever appears later is not announced again. Each album player is read once
+to learn its name. Other players are ignored. Returning releases and editorial
+changes do not create duplicates.
 Titles come from Bandcamp player metadata; links lead to the recommendations
 page.
 

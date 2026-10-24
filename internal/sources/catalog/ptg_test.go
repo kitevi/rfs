@@ -137,7 +137,33 @@ func TestPTGFlowVersion(t *testing.T) {
 	if catalog.PTG.Version() != catalog.PTG.ExtractVersion {
 		t.Fatalf("Version() = %d, want %d", catalog.PTG.Version(), catalog.PTG.ExtractVersion)
 	}
-	if catalog.PTG.ExtractVersion != 6 {
-		t.Fatalf("ExtractVersion = %d, want 6 (history rebuild must replay over stored rows)", catalog.PTG.ExtractVersion)
+	if catalog.PTG.ExtractVersion != 7 {
+		t.Fatalf("ExtractVersion = %d, want 7 (history rebuild must replay over stored rows)", catalog.PTG.ExtractVersion)
+	}
+}
+
+func TestCatalogTitlesNameTheEdition(t *testing.T) {
+	const boilerplate = `<span class=\"quote\">&gt;Not sure what private trackers are all about?</span><br>A private tracker is an invite-only torrent website.`
+	cases := []struct {
+		flow      catalog.Flow
+		sub, com  string
+		wantTitle string
+	}{
+		{catalog.PTG, "/ptg/ - Private Trackers General", "Talia edition<br><br>" + boilerplate, "Private Trackers General — Talia edition"},
+		{catalog.PTG, "/ptg/ - Private Trackers General", boilerplate, "Private Trackers General"},
+		{catalog.PTG, "/ptg/ - Private Trackers General", "/ptg/ - Private Trackers General<br><br>" + boilerplate, "Private Trackers General"},
+		{catalog.PTG, "/ptg/ - Private Trackers General - UTORRENT IS KILL EDITION", "UTORRENT IS KILL<br>BASED PTP GODS<br><br>" + boilerplate, "Private Trackers General - UTORRENT IS KILL EDITION"},
+		{catalog.Film, "/film/", "Arthouse &amp; Classics<br><br>Deneuvedition<br><br><span class=\\\"quote\\\">&gt;QotD</span><br>Favourite Deneuve joint?", "Arthouse & Classics — Deneuvedition"},
+		{catalog.Film, "/film/ - arthouse, classics and staging", "Arthouse &amp; Classics<br><br>Stagedition", "arthouse, classics and staging"},
+	}
+	for _, c := range cases {
+		page := rfs.Page(`[{"page":1,"threads":[{"no":1,"sub":"` + c.sub + `","com":"` + c.com + `","time":1788200342}]}]`)
+		items, err := c.flow.Extract(page)
+		if err != nil {
+			t.Fatalf("%q: %v", c.sub, err)
+		}
+		if items[0].Title != c.wantTitle {
+			t.Errorf("sub %q com %q: title = %q, want %q", c.sub, c.com, items[0].Title, c.wantTitle)
+		}
 	}
 }

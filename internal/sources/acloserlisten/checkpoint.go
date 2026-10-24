@@ -3,6 +3,7 @@ package acloserlisten
 import (
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 
@@ -13,27 +14,36 @@ import (
 // Announced releases are kept for the life of the feed: the page is replaced
 // wholesale, and a release that returns in a later revision must not be
 // announced twice. Tracks remembers which release a track player identified,
-// so a later poll does not refetch a player it has already resolved.
+// so a later poll does not refetch a player it has already resolved. Names
+// holds the prose slugs an album's player title can be written as, so an album
+// named in the lede and the same album's player are one release.
 type checkpoint struct {
-	Version   int               `json:"version"`
-	Announced []string          `json:"announced"`
-	Tracks    map[string]string `json:"tracks,omitempty"`
+	Version   int                 `json:"version"`
+	Announced []string            `json:"announced"`
+	Tracks    map[string]string   `json:"tracks,omitempty"`
+	Names     map[string][]string `json:"names,omitempty"`
 }
 
 // identityNote is carried on an item from ResolveIdentity to Evaluate, then
-// removed before the item is published.
+// removed before the item is published. Track is set when a track player was
+// resolved. Names is set, possibly empty, when an album player was read.
 type identityNote struct {
-	Track   string `json:"track"`
-	Release string `json:"release"`
+	Track   string   `json:"track,omitempty"`
+	Release string   `json:"release"`
+	Names   []string `json:"names"`
 }
 
 // Evaluate decides which observed releases to announce. Every release embedded
 // in the first complete observation is published, so a new subscriber starts
 // with the list as it stands. Later observations publish only releases that
 // have never been announced, in page order, so a whole-page replacement can
-// release many entries in one poll without repeating an earlier one.
+// release many entries in one poll without repeating an earlier one. An album
+// named in the prose and an album player with the same name are one release:
+// the player is announced when both are on the page, and whichever comes later
+// is booked silently.
 func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.AnnouncementDecision, error) {
 	tracks := map[string]string{}
+	names := map[string][]string{}
 	announced := map[string]bool{}
 	if len(raw) > 0 {
 		state, err := decodeCheckpoint(raw)
@@ -48,6 +58,11 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 				return rfs.AnnouncementDecision{}, err
 			}
 			tracks[id] = key
+		}
+		for key, aliases := range state.Names {
+			if err := rememberNames(names, key, aliases); err != nil {
+				return rfs.AnnouncementDecision{}, err
+			}
 		}
 		for _, id := range state.Announced {
 			rel, err := releaseFromCheckpointKey(id)
@@ -64,8 +79,15 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 			return rfs.AnnouncementDecision{}, err
 		}
 		if ok {
-			if err := rememberTrack(tracks, note); err != nil {
-				return rfs.AnnouncementDecision{}, err
+			if note.Track != "" {
+				if err := rememberTrack(tracks, note); err != nil {
+					return rfs.AnnouncementDecision{}, err
+				}
+			}
+			if note.Names != nil {
+				if err := rememberNames(names, note.Release, note.Names); err != nil {
+					return rfs.AnnouncementDecision{}, err
+				}
 			}
 			item.Metadata = ""
 		}
@@ -75,18 +97,54 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
 	}
+	namesOf := func(rel release) []string {
+		if rel.kind == releaseNamed {
+			return []string{rel.id}
+		}
+		return names[rel.checkpointKey()]
+	}
+	announcedNames := map[string]bool{}
+	for key := range announced {
+		rel, err := releaseFromCheckpointKey(key)
+		if err != nil {
+			return rfs.AnnouncementDecision{}, err
+		}
+		for _, name := range namesOf(rel) {
+			announcedNames[name] = true
+		}
+	}
+	playerNames := map[string]bool{}
+	for _, candidate := range observed {
+		if candidate.release.kind == releaseAlbum {
+			for _, name := range namesOf(candidate.release) {
+				playerNames[name] = true
+			}
+		}
+	}
 	var announcements []rfs.ExtractedItem
 	for _, candidate := range observed {
-		if announced[candidate.release.checkpointKey()] {
+		key := candidate.release.checkpointKey()
+		if announced[key] {
 			continue
 		}
-		announced[candidate.release.checkpointKey()] = true
+		announced[key] = true
+		if candidate.release.kind == releaseNamed && playerNames[candidate.release.id] {
+			continue
+		}
+		aliases := namesOf(candidate.release)
+		if slices.ContainsFunc(aliases, func(name string) bool { return announcedNames[name] }) {
+			continue
+		}
+		for _, name := range aliases {
+			announcedNames[name] = true
+		}
 		announcements = append(announcements, candidate.item)
 	}
 	encoded, err := encodeCheckpoint(checkpoint{
 		Version:   CheckpointVersion,
 		Announced: announcedIDs(announced),
 		Tracks:    tracksOrNil(tracks),
+		Names:     namesOrNil(names),
 	})
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
@@ -190,6 +248,13 @@ func announcedIDs(set map[string]bool) []string {
 	return ids
 }
 
+func namesOrNil(names map[string][]string) map[string][]string {
+	if len(names) == 0 {
+		return nil
+	}
+	return names
+}
+
 func tracksOrNil(tracks map[string]string) map[string]string {
 	if len(tracks) == 0 {
 		return nil
@@ -216,7 +281,7 @@ func takeIdentityNote(metadata string) (identityNote, bool, error) {
 	if err := json.Unmarshal([]byte(metadata), &note); err != nil {
 		return identityNote{}, false, fmt.Errorf("acloserlisten: decode identity note: %w", err)
 	}
-	if note.Track == "" || note.Release == "" {
+	if note.Release == "" || (note.Track == "" && note.Names == nil) {
 		return identityNote{}, false, fmt.Errorf("acloserlisten: incomplete identity note")
 	}
 	return note, true, nil
@@ -235,6 +300,25 @@ func rememberTrack(tracks map[string]string, note identityNote) error {
 		return fmt.Errorf("acloserlisten: track %s resolved to a different track", trackID)
 	}
 	tracks[trackID] = rel.checkpointKey()
+	return nil
+}
+
+// rememberNames records the prose slugs of an album player. Only albums carry
+// names: a track or video is never the album the lede writes about.
+func rememberNames(names map[string][]string, key string, aliases []string) error {
+	rel, err := releaseFromCheckpointKey(key)
+	if err != nil {
+		return err
+	}
+	if rel.kind != releaseAlbum {
+		return fmt.Errorf("acloserlisten: names recorded for non-album %q", key)
+	}
+	for _, alias := range aliases {
+		if !validNameSlug(alias) {
+			return fmt.Errorf("acloserlisten: invalid album name %q", alias)
+		}
+	}
+	names[rel.checkpointKey()] = append([]string{}, aliases...)
 	return nil
 }
 

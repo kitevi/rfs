@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"golang.org/x/net/html"
 
@@ -20,6 +21,9 @@ type Flow struct {
 	// General is the general's name without slashes, such as "ptg". It
 	// matches subjects as "/ptg/" and prefixes item GUIDs.
 	General string
+	// Name is the general's usual long name. A subject or opening line that
+	// says only this is the general's banner, not the thread's edition.
+	Name string
 	// ExtractVersion is this general's derivation version. Bump it when
 	// Extract's output can change for a fixed catalog page. Each general
 	// keeps its own, because a bump rebuilds that feed's stored history.
@@ -28,10 +32,10 @@ type Flow struct {
 
 var (
 	// PTG is /g/'s Private Trackers General.
-	PTG = Flow{Board: "g", General: "ptg", ExtractVersion: 6}
+	PTG = Flow{Board: "g", General: "ptg", Name: "Private Trackers General", ExtractVersion: 7}
 	// Film is /tv/'s arthouse and classic cinema general. Matching is on the
 	// subject alone: /film/ threads are the arthouse general by definition.
-	Film = Flow{Board: "tv", General: "film", ExtractVersion: 5}
+	Film = Flow{Board: "tv", General: "film", Name: "Arthouse & Classics", ExtractVersion: 6}
 )
 
 // Version reports the general's extraction version.
@@ -115,6 +119,53 @@ func (f Flow) stripThreadName(sub string) string {
 	return strings.TrimSpace(strings.TrimLeft(rest, " -\u2013\u2014\t"))
 }
 
+// title names a thread by its edition. A subject that says more than the
+// general's name is the title. Otherwise the edition is the opening post's
+// first line that mentions an edition, or else its first line, among the lines
+// before the first greentext. Lines that only repeat the general's name are the
+// banner, and greentext starts the general's standing boilerplate.
+func (f Flow) title(sub, description string) string {
+	if subject := f.stripThreadName(sub); subject != "" && fold(subject) != fold(f.Name) {
+		return subject
+	}
+	var first, edition string
+	for _, line := range strings.Split(description, "\n") {
+		line = f.stripThreadName(line)
+		if line == "" || fold(line) == fold(f.Name) {
+			continue
+		}
+		if strings.HasPrefix(line, ">") {
+			break
+		}
+		if first == "" {
+			first = line
+		}
+		if strings.Contains(strings.ToLower(line), "dition") {
+			edition = line
+			break
+		}
+	}
+	if edition == "" {
+		edition = first
+	}
+	if edition == "" {
+		return f.Name
+	}
+	return f.Name + " \u2014 " + edition
+}
+
+// fold keeps only lowercase letters and digits, so "Arthouse & Classics" and
+// "arthouse and classics" differ but spacing and case do not.
+func fold(text string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(text) {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // RebuildStored uses the same derivation as fresh catalog extraction.
 func (f Flow) RebuildStored(old rfs.Item) (rfs.Item, error) {
 	return rfs.RebuildFromSavedInput(old, f.General, f.marker(), f.extractThread, f.stripThreadName)
@@ -132,14 +183,7 @@ func (f Flow) extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 	if description == "" {
 		return rfs.ExtractedItem{}, false
 	}
-	title := f.stripThreadName(t.Sub)
-	if firstLine := strings.SplitN(description, "\n", 2)[0]; firstLine != "" {
-		if title == "" {
-			title = firstLine
-		} else {
-			title += " \u2014 " + firstLine
-		}
-	}
+	title := f.title(t.Sub, description)
 	pubDate := time.Unix(t.Time, 0).UTC()
 	replies := t.Replies
 	if replies < 0 {

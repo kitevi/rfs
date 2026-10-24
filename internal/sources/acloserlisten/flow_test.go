@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"slices"
 	"strings"
 	"testing"
 
@@ -363,6 +364,20 @@ func TestEnrichAnnouncementTitlesTheYouTubeVideo(t *testing.T) {
 	if enriched.GUID != item.GUID {
 		t.Fatalf("guid = %q", enriched.GUID)
 	}
+	for _, c := range []struct{ page, want string }{
+		{`{"title":"Max Richter - Now We Can Sing (Visualiser)","author_name":"MaxRichterVEVO"}`, "Max Richter — Now We Can Sing (Visualiser)"},
+		{`{"title":"Max Richter - Now We Can Sing","author_name":"Max Richter - Topic"}`, "Max Richter — Now We Can Sing"},
+		{`{"title":"Now We Can Sing","author_name":"Deutsche Grammophon"}`, "Deutsche Grammophon — Now We Can Sing"},
+		{`{"title":"Caspian - Hiraeth","author_name":"Deutsche Grammophon"}`, "Deutsche Grammophon — Caspian - Hiraeth"},
+	} {
+		got, err := flow.EnrichAnnouncement(rfs.Page(c.page), item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.Title != c.want {
+			t.Errorf("%s: title = %q, want %q", c.page, got.Title, c.want)
+		}
+	}
 	url, err := flow.AnnouncementEnrichmentURL(item)
 	if err != nil {
 		t.Fatal(err)
@@ -435,6 +450,154 @@ func octoberPage(t *testing.T) rfs.Page {
 		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/track=687192546/size=large/bgcol=333333/linkcol=ffffff/tracklist=false/artwork=small/"></iframe>` +
 		`<iframe src="//bandcamp.com/EmbeddedPlayer/v=2/album=4925039/size=large/bgcol=333333/linkcol=ffffff/tracklist=false/artwork=small/"></iframe>`
 	return pageJSON(t, PageID, content)
+}
+
+func TestAlbumNamesDropTrailingFormatWordsAndNotes(t *testing.T) {
+	cases := []struct {
+		artist, title string
+		want          []string
+	}{
+		{"Nero's Day At Disneyland", "Grand Reopening EP", []string{"nerosdayatdisneyland:grandreopeningep", "nerosdayatdisneyland:grandreopening"}},
+		{"CM von Hausswolff & Chandra Shukla", "Travelogue [Thailand]", []string{"cmvonhausswolffchandrashukla:traveloguethailand", "cmvonhausswolffchandrashukla:travelogue"}},
+		{"Caspian", "Caspian", []string{"caspian:caspian"}},
+		{"Artist", "EP", []string{"artist:ep"}},
+		{"", "Title", []string{}},
+	}
+	for _, c := range cases {
+		if got := albumNames(c.artist, c.title); !slices.Equal(got, c.want) {
+			t.Errorf("albumNames(%q, %q) = %q, want %q", c.artist, c.title, got, c.want)
+		}
+	}
+}
+
+// resolvedAlbum is an album item as ResolveIdentity hands it to Evaluate.
+func resolvedAlbum(t *testing.T, id int64, artist, title string) rfs.ExtractedItem {
+	t.Helper()
+	item, err := (Flow{}).ResolveIdentity(playerPage(t, id, artist, title), rfs.ExtractedItem{GUID: guidPrefix + strconvI64(id), Link: HumanURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return item
+}
+
+func TestEvaluateTreatsANamedAlbumAndItsPlayerAsOneRelease(t *testing.T) {
+	flow := Flow{}
+	named := func(t *testing.T) rfs.ExtractedItem {
+		items, err := flow.Extract(pageJSON(t, PageID, `<p><strong>Nero&#8217;s Day at Disneyland</strong> offers <em>Grand Reopening,</em> after 17 years.</p>`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return items[0]
+	}
+	album := func(t *testing.T) rfs.ExtractedItem {
+		return resolvedAlbum(t, 988738690, "Nero's Day At Disneyland", "Grand Reopening EP")
+	}
+	other := func(t *testing.T) rfs.ExtractedItem { return resolvedAlbum(t, 4925039, "Caspian", "Caspian") }
+
+	t.Run("player after the prose", func(t *testing.T) {
+		first, err := flow.Evaluate(nil, []rfs.ExtractedItem{named(t)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := flow.Evaluate(first.Checkpoint, []rfs.ExtractedItem{named(t), album(t), other(t)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(second.Announcements) != 1 || second.Announcements[0].GUID != guidPrefix+"4925039" {
+			t.Fatalf("announced %#v, want only the unrelated album", second.Announcements)
+		}
+		var state checkpoint
+		if err := json.Unmarshal(second.Checkpoint, &state); err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Contains(state.Announced, "988738690") {
+			t.Fatalf("the duplicate player was not booked: %s", second.Checkpoint)
+		}
+	})
+	t.Run("prose after the player", func(t *testing.T) {
+		first, err := flow.Evaluate(nil, []rfs.ExtractedItem{album(t)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		// The player has left the page; its remembered name still matches.
+		second, err := flow.Evaluate(first.Checkpoint, []rfs.ExtractedItem{named(t), other(t)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(second.Announcements) != 1 || second.Announcements[0].GUID != guidPrefix+"4925039" {
+			t.Fatalf("announced %#v, want only the unrelated album", second.Announcements)
+		}
+	})
+	t.Run("both on one page", func(t *testing.T) {
+		decision, err := flow.Evaluate(nil, []rfs.ExtractedItem{named(t), album(t)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(decision.Announcements) != 1 || decision.Announcements[0].GUID != guidPrefix+"988738690" {
+			t.Fatalf("announced %#v, want the player only", decision.Announcements)
+		}
+		if decision.Announcements[0].Title != "Nero's Day At Disneyland — Grand Reopening EP" || decision.Announcements[0].Metadata != "" {
+			t.Fatalf("announcement = %#v", decision.Announcements[0])
+		}
+	})
+	t.Run("a player with another name is its own release", func(t *testing.T) {
+		decision, err := flow.Evaluate(nil, []rfs.ExtractedItem{named(t), resolvedAlbum(t, 1, "Nero's Day At Disneyland", "Ghost Debt")})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(decision.Announcements) != 2 {
+			t.Fatalf("announced %#v, want both", decision.Announcements)
+		}
+	})
+}
+
+func TestPollReadsEachAlbumPlayerOnceAndSkipsTheNamedDuplicate(t *testing.T) {
+	ctx := t.Context()
+	store, err := rfs.OpenInMemorySQLiteStore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	flow := Flow{}
+	lede := `<p><strong>Nero&#8217;s Day at Disneyland</strong> offers <em>Grand Reopening,</em> after 17 years.</p>`
+	fetcher := &pageFetcher{pages: map[string]rfs.Page{PageURL: pageJSON(t, PageID, lede+trackEmbed(687192546))}}
+	trackURL, err := flow.IdentityURL(rfs.ExtractedItem{GUID: trackGUIDPrefix + "687192546"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	albumURL, err := flow.IdentityURL(rfs.ExtractedItem{GUID: guidPrefix + "988738690"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetcher.pages[trackURL] = trackPlayerPage(t, 687192546, "Nero's Day At Disneyland", "Ghost Debt", 0, "")
+	fetcher.pages[albumURL] = playerPage(t, 988738690, "Nero's Day At Disneyland", "Grand Reopening EP")
+	source := rfs.Source{ID: "acloserlisten", URL: PageURL, Flow: flow}
+	poller := rfs.Poller{Fetcher: fetcher, Store: store}
+
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	// Two days later the track player was swapped for the album's own player.
+	fetcher.pages[PageURL] = pageJSON(t, PageID, lede+embed(988738690))
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	stored := loadFeed(t, store)
+	if len(stored) != 2 {
+		t.Fatalf("stored %#v, want the named album and the standalone track", stored)
+	}
+	if _, ok := stored[guidPrefix+"988738690"]; ok {
+		t.Fatal("the named album was announced again from its player")
+	}
+	if fetcher.hits[albumURL] != 1 {
+		t.Fatalf("album player fetched %d times, want once", fetcher.hits[albumURL])
+	}
+	if _, err := poller.Poll(ctx, source); err != nil {
+		t.Fatal(err)
+	}
+	if fetcher.hits[albumURL] != 1 {
+		t.Fatalf("a named album player was fetched again: %d", fetcher.hits[albumURL])
+	}
 }
 
 func TestResolveIdentityCollapsesAnAlbumTrackAndKeepsAStandaloneTrack(t *testing.T) {

@@ -1,7 +1,6 @@
 package acloserlisten
 
 import (
-	"encoding/json"
 	"net/http"
 	"os"
 	"strings"
@@ -29,10 +28,17 @@ func TestLiveRecommendations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(items) == 0 {
-		t.Fatal("no albums")
+	var first rfs.ExtractedItem
+	for _, item := range items {
+		if strings.HasPrefix(item.GUID, guidPrefix) {
+			first = item
+			break
+		}
 	}
-	url, err := (Flow{}).AnnouncementEnrichmentURL(items[0])
+	if first.GUID == "" {
+		t.Fatalf("no album players: %#v", items)
+	}
+	url, err := (Flow{}).AnnouncementEnrichmentURL(first)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,13 +46,17 @@ func TestLiveRecommendations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	item, err := (Flow{}).EnrichAnnouncement(player.Page, items[0])
+	item, err := (Flow{}).EnrichAnnouncement(player.Page, first)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("%d releases; first: %s", len(items), item.Title)
+	t.Logf("%d releases; first album: %s", len(items), item.Title)
 }
 
+// TestLiveOctoberRecommendations follows the fall revision as it stood on
+// 2026-10-24: the lede names Max Richter and Nero's Day at Disneyland, and the
+// page embeds a video and the Nero's Day and Caspian album players. The named
+// Nero's Day album is that player, so it is announced once.
 func TestLiveOctoberRecommendations(t *testing.T) {
 	if os.Getenv("RFS_TEST_ACLOSERLISTEN_LIVE") == "" {
 		t.Skip("set RFS_TEST_ACLOSERLISTEN_LIVE=1")
@@ -61,33 +71,23 @@ func TestLiveOctoberRecommendations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var albums []string
-	seenTrack := false
-	seenAlbum := false
-	seenVideo := false
+	want := map[string]bool{
+		namedGUIDPrefix + "nerosdayatdisneyland:grandreopening": false,
+		youtubeGUIDPrefix + "uZf2jkCI6Fo":                       false,
+		guidPrefix + "988738690":                                false,
+		guidPrefix + "4925039":                                  false,
+	}
 	for _, item := range items {
-		switch item.GUID {
-		case trackGUIDPrefix + "687192546":
-			seenTrack = true
-		case guidPrefix + "4925039":
-			seenAlbum = true
-			albums = append(albums, "4925039")
-		case youtubeGUIDPrefix + "uZf2jkCI6Fo":
-			seenVideo = true
-		default:
-			if strings.HasPrefix(item.GUID, guidPrefix) {
-				albums = append(albums, strings.TrimPrefix(item.GUID, guidPrefix))
-			}
+		if _, ok := want[item.GUID]; ok {
+			want[item.GUID] = true
 		}
 	}
-	if !seenTrack || !seenAlbum || !seenVideo {
-		t.Fatalf("live page no longer has the October video, track, and album: %#v", items)
+	for guid, seen := range want {
+		if !seen {
+			t.Skipf("live page no longer has the October revision (missing %s): %#v", guid, items)
+		}
 	}
-	checkpoint, err := json.Marshal(map[string]any{"version": CheckpointVersion, "announced": albums})
-	if err != nil {
-		t.Fatal(err)
-	}
-	ready, pending, err := flow.PlanIdentities(checkpoint, items)
+	ready, pending, err := flow.PlanIdentities(nil, items)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -110,7 +110,7 @@ func TestLiveOctoberRecommendations(t *testing.T) {
 			}
 		}
 	}
-	decision, err := flow.Evaluate(checkpoint, ready)
+	decision, err := flow.Evaluate(nil, ready)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,19 +137,22 @@ func TestLiveOctoberRecommendations(t *testing.T) {
 	joined := strings.Join(titles, "\n")
 	for _, want := range []string{
 		"Max Richter — While the Flood Rages",
-		"Grand Reopening",
 		"Max Richter — Now We Can Sing (Visualiser)",
-		"Nero's Day At Disneyland — Ghost Debt",
+		"Nero's Day At Disneyland — Grand Reopening EP",
+		"Caspian — Caspian",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("announced titles missing %q:\n%s", want, joined)
 		}
+	}
+	if strings.Count(joined, "Grand Reopening") != 1 {
+		t.Fatalf("Grand Reopening announced more than once:\n%s", joined)
 	}
 	_, pending, err = flow.PlanIdentities(decision.Checkpoint, items)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(pending) != 0 {
-		t.Fatalf("resolved track still pending: %#v", pending)
+		t.Fatalf("named album players still pending: %#v", pending)
 	}
 }

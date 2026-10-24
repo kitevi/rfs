@@ -1,9 +1,13 @@
 package rfs
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type SnapshotReader interface {
@@ -27,8 +31,8 @@ func NewHTTPHandler(store SnapshotReader, sources []Source, build BuildInfo) htt
 }
 
 func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		w.Header().Set("Allow", http.MethodGet)
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		w.Header().Set("Allow", "GET, HEAD")
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -77,10 +81,10 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch format {
 	case "xml":
 		body, err := RenderRSS(source.Meta, items)
-		writeRendered(w, "application/rss+xml; charset=utf-8", body, err)
+		writeRendered(w, r, "application/rss+xml; charset=utf-8", body, err)
 	case "html":
 		body, err := RenderHTMLFeed(sourceID, source.Meta, items, h.build)
-		writeRendered(w, "text/html; charset=utf-8", body, err)
+		writeRendered(w, r, "text/html; charset=utf-8", body, err)
 	default:
 		http.NotFound(w, r)
 	}
@@ -88,14 +92,18 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 // writeRendered writes a rendered body with the given content type, or replies
 // with a 500 if rendering failed. It deduplicates the render-and-write shape
-// shared by the xml and html feed formats.
-func writeRendered(w http.ResponseWriter, contentType string, body []byte, err error) {
+// shared by the xml and html feed formats. Rendering is deterministic, so a hash
+// of the body is a strong ETag and a reader polling an unchanged feed gets a
+// 304 instead of the whole body.
+func writeRendered(w http.ResponseWriter, r *http.Request, contentType string, body []byte, err error) {
 	if err != nil {
 		http.Error(w, "render feed", http.StatusInternalServerError)
 		return
 	}
+	sum := sha256.Sum256(body)
 	w.Header().Set("Content-Type", contentType)
-	_, _ = w.Write(body)
+	w.Header().Set("ETag", `"`+hex.EncodeToString(sum[:16])+`"`)
+	http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(body))
 }
 
 func (h HTTPHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
@@ -104,8 +112,7 @@ func (h HTTPHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "render index", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	_, _ = w.Write(body)
+	writeRendered(w, r, "text/html; charset=utf-8", body, nil)
 }
 
 // splitFeedPath turns "/feeds/<id>.<ext>" into (id, ext, true). It rejects

@@ -3,6 +3,7 @@ package acloserlisten
 import (
 	"fmt"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode"
@@ -200,6 +201,45 @@ func proseSlug(artist, title string) (string, bool) {
 		return "", false
 	}
 	return slug, true
+}
+
+// albumNames are the prose slugs a player's album title can be written as: the
+// title itself, then with a trailing bracketed note or format word such as EP
+// removed, one at a time. The lede names "Grand Reopening" for the player's
+// "Grand Reopening EP".
+func albumNames(artist, title string) []string {
+	names := []string{}
+	for title != "" {
+		if slug, ok := proseSlug(artist, title); ok && !slices.Contains(names, slug) {
+			names = append(names, slug)
+		}
+		shorter := strings.TrimRight(cleanName(trimEdition(title)), " -\u2013\u2014")
+		if shorter == title {
+			break
+		}
+		title = shorter
+	}
+	return names
+}
+
+// trimEdition removes one trailing bracketed note or release-format word.
+func trimEdition(title string) string {
+	title = strings.TrimSpace(title)
+	for _, pair := range [][2]string{{"(", ")"}, {"[", "]"}} {
+		if strings.HasSuffix(title, pair[1]) {
+			if open := strings.LastIndex(title, pair[0]); open > 0 {
+				return title[:open]
+			}
+		}
+	}
+	fields := strings.Fields(title)
+	if len(fields) > 1 {
+		switch strings.ToLower(fields[len(fields)-1]) {
+		case "ep", "lp", "single", "e.p.":
+			return strings.Join(fields[:len(fields)-1], " ")
+		}
+	}
+	return title
 }
 
 func nameSlug(text string) string {
