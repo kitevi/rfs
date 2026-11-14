@@ -2,7 +2,6 @@ package malstack_test
 
 import (
 	"context"
-	"encoding/xml"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -21,14 +20,6 @@ type fixedClock struct {
 
 func (c *fixedClock) Now() time.Time { return c.at }
 
-type feedItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	GUID        string `xml:"guid"`
-	Description string `xml:"description"`
-	PubDate     string `xml:"pubDate"`
-}
-
 func testSource(url string) rfs.Source {
 	return rfs.Source{
 		ID:  "mal-stack-82158",
@@ -41,22 +32,6 @@ func testSource(url string) rfs.Source {
 		},
 		Flow: malstack.Flow{StackID: malstack.NewAnimeIPs},
 	}
-}
-
-func readFeed(t *testing.T, store *rfs.SQLiteStore, source rfs.Source) []feedItem {
-	t.Helper()
-	w := httptest.NewRecorder()
-	rfs.NewHTTPHandler(store, []rfs.Source{source}, rfs.BuildInfo{}).ServeHTTP(w, httptest.NewRequest("GET", "/feeds/mal-stack-82158.xml", nil))
-	if w.Code != 200 {
-		t.Fatalf("feed status %d: %s", w.Code, w.Body.String())
-	}
-	var doc struct {
-		Items []feedItem `xml:"channel>item"`
-	}
-	if err := xml.Unmarshal(w.Body.Bytes(), &doc); err != nil {
-		t.Fatal(err)
-	}
-	return doc.Items
 }
 
 func readFeedHTML(t *testing.T, store *rfs.SQLiteStore, source rfs.Source) string {
@@ -85,7 +60,7 @@ func TestPollPublishesChangesThroughFeed(t *testing.T) {
 	if _, err := poller.Poll(context.Background(), source); err != nil {
 		t.Fatalf("baseline poll: %v", err)
 	}
-	if items := readFeed(t, store, source); len(items) != 0 {
+	if items := rfstest.Feed(t, store, source); len(items) != 0 {
 		t.Fatalf("first complete observation must stay silent, got %+v", items)
 	}
 
@@ -97,7 +72,7 @@ func TestPollPublishesChangesThroughFeed(t *testing.T) {
 	if _, err := poller.Poll(context.Background(), source); err != nil {
 		t.Fatalf("changed poll: %v", err)
 	}
-	items := readFeed(t, store, source)
+	items := rfstest.Feed(t, store, source)
 	if len(items) != 3 {
 		t.Fatalf("expected one event per affected anime, got %d: %+v", len(items), items)
 	}
@@ -119,7 +94,7 @@ func TestPollPublishesChangesThroughFeed(t *testing.T) {
 	if _, err := poller.Poll(context.Background(), source); err != nil {
 		t.Fatalf("unchanged poll: %v", err)
 	}
-	if again := readFeed(t, store, source); len(again) != 3 {
+	if again := rfstest.Feed(t, store, source); len(again) != 3 {
 		t.Fatalf("unchanged observation duplicated events: %d", len(again))
 	}
 }
@@ -154,7 +129,7 @@ func TestPollPreservesBaselineOnIncompleteAndFailedPages(t *testing.T) {
 	if _, err := poller.Poll(context.Background(), source); err == nil {
 		t.Fatal("unrecognized page must fail the poll")
 	}
-	if items := readFeed(t, store, source); len(items) != len(changed) {
+	if items := rfstest.Feed(t, store, source); len(items) != len(changed) {
 		t.Fatalf("failed page changed the feed: %d items", len(items))
 	}
 
@@ -172,18 +147,18 @@ func TestPollPreservesBaselineOnIncompleteAndFailedPages(t *testing.T) {
 	if _, err := poller.Poll(context.Background(), source); err != nil {
 		t.Fatalf("recovery poll: %v", err)
 	}
-	items := readFeed(t, store, source)
+	items := rfstest.Feed(t, store, source)
 	if len(items) != len(changed)+2 {
 		t.Fatalf("recovery must publish the pending removal and addition: %+v", items)
 	}
 }
 
-func pollAndExpectChange(t *testing.T, poller rfs.Poller, source rfs.Source, store *rfs.SQLiteStore, title string) []feedItem {
+func pollAndExpectChange(t *testing.T, poller rfs.Poller, source rfs.Source, store *rfs.SQLiteStore, title string) []rfstest.FeedItem {
 	t.Helper()
 	if _, err := poller.Poll(context.Background(), source); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
-	items := readFeed(t, store, source)
+	items := rfstest.Feed(t, store, source)
 	if len(items) == 0 || items[len(items)-1].Title != title {
 		t.Fatalf("expected %q in feed, got %+v", title, items)
 	}
@@ -271,7 +246,7 @@ func TestPollRendersHostileUpstreamTextInertly(t *testing.T) {
 	if !strings.Contains(htmlBody, "&lt;script&gt;alert(1)&lt;/script&gt;") {
 		t.Fatalf("escaped hostile text should remain readable: %q", htmlBody)
 	}
-	items := readFeed(t, store, source)
+	items := rfstest.Feed(t, store, source)
 	if len(items) != 1 || !strings.Contains(items[0].Description, "&lt;script&gt;") {
 		t.Fatalf("RSS must escape hostile text: %+v", items)
 	}

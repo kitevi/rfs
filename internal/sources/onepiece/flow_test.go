@@ -2,27 +2,17 @@ package onepiece
 
 import (
 	"encoding/json"
-	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 )
 
-func loadFixture(t *testing.T, name string) rfs.Page {
-	t.Helper()
-	page, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatalf("read fixture %s: %v", name, err)
-	}
-	return page
-}
-
 func TestExtractReturnsMainSeriesChapters(t *testing.T) {
-	items, err := Flow{}.Extract(loadFixture(t, "one-piece-archive.html"))
+	items, err := Flow{}.Extract(rfstest.Fixture(t, "one-piece-archive.html"))
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}

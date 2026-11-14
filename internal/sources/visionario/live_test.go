@@ -2,14 +2,11 @@ package visionario
 
 import (
 	"encoding/json"
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 )
 
 // TestLiveArchive is an opt-in probe of the real film archive. It verifies
@@ -21,7 +18,7 @@ func TestLiveArchive(t *testing.T) {
 	if os.Getenv("RFS_TEST_VISIONARIO_LIVE") == "" {
 		t.Skip("set RFS_TEST_VISIONARIO_LIVE=1 to probe the live archive")
 	}
-	items, err := Flow{}.Extract(fetchPage(t, PageURL))
+	items, err := Flow{}.Extract(rfstest.FetchLive(t, PageURL))
 	if err != nil {
 		t.Fatalf("extract live archive: %v", err)
 	}
@@ -31,7 +28,7 @@ func TestLiveArchive(t *testing.T) {
 		if !strings.HasPrefix(item.GUID, guidPrefix) || item.Link != filmURL(strings.TrimPrefix(item.GUID, guidPrefix)) {
 			t.Fatalf("live item = %#v", item)
 		}
-		resolved, err := flow.ResolveIdentity(fetchPage(t, item.Link), item)
+		resolved, err := flow.ResolveIdentity(rfstest.FetchLive(t, item.Link), item)
 		if err != nil {
 			t.Fatalf("classify %s: %v", item.Link, err)
 		}
@@ -52,22 +49,4 @@ func TestLiveArchive(t *testing.T) {
 		t.Fatal("live archive had no release with an opening date")
 	}
 	t.Logf("live archive: %d films, release %s", len(items), releaseTitle)
-}
-
-func fetchPage(t *testing.T, pageURL string) rfs.Page {
-	t.Helper()
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(pageURL)
-	if err != nil {
-		t.Fatalf("fetch %s: %v", pageURL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("fetch %s: status %s", pageURL, resp.Status)
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		t.Fatalf("read %s: %v", pageURL, err)
-	}
-	return body
 }

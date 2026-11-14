@@ -52,7 +52,7 @@ func TestPollKeepsMALStacksIndependent(t *testing.T) {
 				t.Fatalf("%s feed status %d: %s", source.ID, w.Code, w.Body.String())
 			}
 			var doc struct {
-				Items []feedItem `xml:"channel>item"`
+				Items []rfstest.FeedItem `xml:"channel>item"`
 			}
 			if err := xml.Unmarshal(w.Body.Bytes(), &doc); err != nil {
 				t.Fatal(err)

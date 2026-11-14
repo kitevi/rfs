@@ -1,14 +1,13 @@
 package coached
 
 import (
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 )
 
 var _ rfs.DatedItemFlow = Flow{}
@@ -22,20 +21,7 @@ func TestLiveEssayIndex(t *testing.T) {
 	if os.Getenv("RFS_TEST_COACHED_LIVE") == "" {
 		t.Skip("set RFS_TEST_COACHED_LIVE=1 to probe the live index")
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(PageURL)
-	if err != nil {
-		t.Fatalf("fetch %s: %v", PageURL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("fetch %s: status %s", PageURL, resp.Status)
-	}
-	page, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		t.Fatalf("read page: %v", err)
-	}
-	items, err := Flow{}.Extract(page)
+	items, err := Flow{}.Extract(rfstest.FetchLive(t, PageURL))
 	if err != nil {
 		t.Fatalf("extract live index: %v", err)
 	}
@@ -60,19 +46,7 @@ func TestLiveEssayIndex(t *testing.T) {
 	if err != nil {
 		t.Fatalf("date URL for %s: %v", items[0].GUID, err)
 	}
-	essay, err := client.Get(url)
-	if err != nil {
-		t.Fatalf("fetch %s: %v", url, err)
-	}
-	defer essay.Body.Close()
-	if essay.StatusCode != http.StatusOK {
-		t.Fatalf("fetch %s: status %s", url, essay.Status)
-	}
-	essayPage, err := io.ReadAll(io.LimitReader(essay.Body, 8<<20))
-	if err != nil {
-		t.Fatalf("read essay: %v", err)
-	}
-	date, err := Flow{}.ItemDate(essayPage, items[0])
+	date, err := Flow{}.ItemDate(rfstest.FetchLive(t, url), items[0])
 	if err != nil {
 		t.Fatalf("date live essay: %v", err)
 	}

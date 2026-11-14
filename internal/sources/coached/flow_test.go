@@ -1,26 +1,16 @@
 package coached
 
 import (
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 )
 
-func loadFixture(t *testing.T, name string) rfs.Page {
-	t.Helper()
-	page, err := os.ReadFile(filepath.Join("testdata", name))
-	if err != nil {
-		t.Fatalf("read fixture %s: %v", name, err)
-	}
-	return page
-}
-
 func TestExtractReturnsEveryEssayInPageOrder(t *testing.T) {
-	items, err := Flow{}.Extract(loadFixture(t, "essays.html"))
+	items, err := Flow{}.Extract(rfstest.Fixture(t, "essays.html"))
 	if err != nil {
 		t.Fatalf("extract: %v", err)
 	}

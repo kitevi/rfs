@@ -2,7 +2,6 @@ package seadex_test
 
 import (
 	"context"
-	"encoding/xml"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -18,29 +17,6 @@ import (
 
 const before = `{"page":1,"perPage":100,"totalPages":1,"totalItems":1,"items":[{"id":"kingsgame","alID":99698,"updated":"2026-09-08 18:00:00.000Z","trs":["oldbest","oldalt"],"notes":"NOGRP is FRA BD Remux+CR and PGS, missing fonts and signs track is PGS only\nAlmighty is USA BD Encode+PGS\njsum would be a better alt","expand":{"trs":[{"id":"oldbest","releaseGroup":"NOGRP","isBest":true,"tags":[]},{"id":"oldalt","releaseGroup":"Almighty","isBest":false,"tags":[]}]}}]}`
 const after = `{"page":1,"perPage":100,"totalPages":1,"totalItems":1,"items":[{"id":"kingsgame","alID":99698,"updated":"2026-09-08 19:18:03.639Z","trs":["newbest","newalt"],"notes":"Headpatter is FRA BD Remux+Restyled CR, Stock CR, and PGS\nHeadpatter is also jsum with the same subs","expand":{"trs":[{"id":"newbest","releaseGroup":"Headpatter","isBest":true,"tags":[]},{"id":"newalt","releaseGroup":"Headpatter","isBest":false,"tags":[]}]}}]}`
-
-type feedItem struct {
-	Title       string `xml:"title"`
-	Link        string `xml:"link"`
-	GUID        string `xml:"guid"`
-	Description string `xml:"description"`
-}
-
-func feed(t *testing.T, store *rfs.SQLiteStore, source rfs.Source) []feedItem {
-	t.Helper()
-	w := httptest.NewRecorder()
-	rfs.NewHTTPHandler(store, []rfs.Source{source}, rfs.BuildInfo{}).ServeHTTP(w, httptest.NewRequest("GET", "/feeds/seadex.xml", nil))
-	if w.Code != 200 {
-		t.Fatalf("feed status %d: %s", w.Code, w.Body.String())
-	}
-	var doc struct {
-		Items []feedItem `xml:"channel>item"`
-	}
-	if err := xml.Unmarshal(w.Body.Bytes(), &doc); err != nil {
-		t.Fatal(err)
-	}
-	return doc.Items
-}
 
 func TestPaginationFailureDoesNotPublishOrConsumeChanges(t *testing.T) {
 	second := strings.ReplaceAll(before, "99698", "2")
@@ -75,7 +51,7 @@ func TestPaginationFailureDoesNotPublishOrConsumeChanges(t *testing.T) {
 	if _, err := poller.Poll(context.Background(), source); err == nil {
 		t.Fatal("partial fetch must fail")
 	}
-	if items := feed(t, store, source); len(items) != 0 {
+	if items := rfstest.Feed(t, store, source); len(items) != 0 {
 		t.Fatalf("partial fetch published changes: %+v", items)
 	}
 	failureStatus = 429
@@ -87,7 +63,7 @@ func TestPaginationFailureDoesNotPublishOrConsumeChanges(t *testing.T) {
 	if _, err := poller.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	items := feed(t, store, source)
+	items := rfstest.Feed(t, store, source)
 	if len(items) != 1 || items[0].Link != "https://releases.moe/2/" || !strings.Contains(items[0].Description, "- NOGRP") {
 		t.Fatalf("lost page-two change: %+v", items)
 	}
@@ -99,7 +75,7 @@ func TestRestartRetainsHistoryAndPublishesRevertsAndRemovals(t *testing.T) {
 	defer server.Close()
 	path := filepath.Join(t.TempDir(), "rfs.sqlite")
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{}}
-	poll := func(bodyValue string) []feedItem {
+	poll := func(bodyValue string) []rfstest.FeedItem {
 		t.Helper()
 		body = bodyValue
 		store, err := rfs.OpenSQLiteStore(path)
@@ -111,7 +87,7 @@ func TestRestartRetainsHistoryAndPublishesRevertsAndRemovals(t *testing.T) {
 		if _, err := p.Poll(context.Background(), source); err != nil {
 			t.Fatal(err)
 		}
-		return feed(t, store, source)
+		return rfstest.Feed(t, store, source)
 	}
 	if got := poll(before); len(got) != 0 {
 		t.Fatal("baseline must be silent")
@@ -164,7 +140,7 @@ func TestUnmuxedBestAndTagsPublishWithoutGroupChanges(t *testing.T) {
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	got := feed(t, store, source)
+	got := rfstest.Feed(t, store, source)
 	if len(got) != 1 {
 		t.Fatalf("want one update, got %+v", got)
 	}
@@ -206,7 +182,7 @@ func TestUpdatesIncludeAnimeTitleCoverAndSafeHTML(t *testing.T) {
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	got := feed(t, store, source)
+	got := rfstest.Feed(t, store, source)
 	if len(got) != 1 || got[0].Title != "King's Game" {
 		t.Fatalf("missing anime title: %+v", got)
 	}
@@ -254,14 +230,14 @@ func TestMalformedResponsesCannotEraseRecommendations(t *testing.T) {
 			if _, err := p.Poll(context.Background(), source); err == nil {
 				t.Fatal("malformed response accepted")
 			}
-			if got := feed(t, store, source); len(got) != 0 {
+			if got := rfstest.Feed(t, store, source); len(got) != 0 {
 				t.Fatalf("false update: %+v", got)
 			}
 			body = after
 			if _, err := p.Poll(context.Background(), source); err != nil {
 				t.Fatal(err)
 			}
-			if got := feed(t, store, source); len(got) != 1 || !strings.Contains(got[0].Description, "- NOGRP") {
+			if got := rfstest.Feed(t, store, source); len(got) != 1 || !strings.Contains(got[0].Description, "- NOGRP") {
 				t.Fatalf("baseline lost: %+v", got)
 			}
 		})
@@ -283,7 +259,7 @@ func TestNoteReorderingIsAnUpdate(t *testing.T) {
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	if got := feed(t, store, source); len(got) != 1 || !strings.Contains(got[0].Description, "Notes") {
+	if got := rfstest.Feed(t, store, source); len(got) != 1 || !strings.Contains(got[0].Description, "Notes") {
 		t.Fatalf("reordered notes lost: %+v", got)
 	}
 }
@@ -302,7 +278,7 @@ func TestReleaseReplacementWithinSameGroupPublishes(t *testing.T) {
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	got := feed(t, store, source)
+	got := rfstest.Feed(t, store, source)
 	if len(got) != 1 || !strings.Contains(got[0].Description, "Releases") {
 		t.Fatalf("same-group replacement lost: %+v", got)
 	}
@@ -335,14 +311,14 @@ func TestMetadataThrottlePreservesPendingChangeAndRetryAfter(t *testing.T) {
 	if err != nil || result.Status != rfs.PollThrottled || result.RetryAfter != 2*time.Hour {
 		t.Fatalf("throttle not propagated: %+v, %v", result, err)
 	}
-	if got := feed(t, store, source); len(got) != 0 {
+	if got := rfstest.Feed(t, store, source); len(got) != 0 {
 		t.Fatal("failed enrichment published update")
 	}
 	throttled = false
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	got := feed(t, store, source)
+	got := rfstest.Feed(t, store, source)
 	if len(got) != 1 || got[0].Title != "King's Game" || !strings.Contains(got[0].Description, "- NOGRP") {
 		t.Fatalf("pending change lost: %+v", got)
 	}
@@ -368,7 +344,7 @@ func TestUnavailableCoverDoesNotBlockTextUpdate(t *testing.T) {
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	got := feed(t, store, source)
+	got := rfstest.Feed(t, store, source)
 	if len(got) != 1 || got[0].Title != "King's Game" || strings.Contains(got[0].Description, "<img") || !strings.Contains(got[0].Description, "- NOGRP") {
 		t.Fatalf("missing text-only update: %+v", got)
 	}
@@ -388,12 +364,12 @@ func TestKingsGameRecommendationDiffAppearsAfterSilentBaseline(t *testing.T) {
 		}
 	}
 	poll()
-	if got := feed(t, store, source); len(got) != 0 {
+	if got := rfstest.Feed(t, store, source); len(got) != 0 {
 		t.Fatalf("baseline published %d items", len(got))
 	}
 	body = after
 	poll()
-	items := feed(t, store, source)
+	items := rfstest.Feed(t, store, source)
 	if len(items) != 1 {
 		t.Fatalf("want one update, got %d", len(items))
 	}
@@ -406,7 +382,7 @@ func TestKingsGameRecommendationDiffAppearsAfterSilentBaseline(t *testing.T) {
 		t.Errorf("link = %s", items[0].Link)
 	}
 	poll()
-	repeated := feed(t, store, source)
+	repeated := rfstest.Feed(t, store, source)
 	if len(repeated) != 1 || repeated[0].GUID != items[0].GUID {
 		t.Fatalf("unchanged poll duplicated update: %+v", repeated)
 	}

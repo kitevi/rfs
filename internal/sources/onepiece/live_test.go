@@ -1,12 +1,11 @@
 package onepiece
 
 import (
-	"io"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
-	"time"
+
+	"github.com/kitevi/rfs/internal/rfstest"
 )
 
 // TestLiveOnePieceArchive is an opt-in probe of the real archive. It verifies
@@ -18,20 +17,7 @@ func TestLiveOnePieceArchive(t *testing.T) {
 	if os.Getenv("RFS_TEST_ONEPIECE_LIVE") == "" {
 		t.Skip("set RFS_TEST_ONEPIECE_LIVE=1 to probe the live archive")
 	}
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(PageURL)
-	if err != nil {
-		t.Fatalf("fetch %s: %v", PageURL, err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("fetch %s: status %s", PageURL, resp.Status)
-	}
-	page, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		t.Fatalf("read page: %v", err)
-	}
-	items, err := Flow{}.Extract(page)
+	items, err := Flow{}.Extract(rfstest.FetchLive(t, PageURL))
 	if err != nil {
 		t.Fatalf("extract live archive: %v", err)
 	}

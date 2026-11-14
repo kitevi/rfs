@@ -38,21 +38,21 @@ func TestCachedMetadataPublishesDiffWithoutAniListPOST(t *testing.T) {
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 0 || len(feed(t, store, source)) != 0 {
+	if calls != 0 || len(rfstest.Feed(t, store, source)) != 0 {
 		t.Fatal("baseline should be silent")
 	}
 	body = after
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	got := feed(t, store, source)
+	got := rfstest.Feed(t, store, source)
 	if calls != 1 || len(got) != 1 || got[0].Title != "King's Game" || !strings.Contains(got[0].Description, "- NOGRP") || strings.Contains(got[0].Description, "<img") {
 		t.Fatalf("bad feed: %+v", got)
 	}
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}
-	if calls != 1 || len(feed(t, store, source)) != 1 {
+	if calls != 1 || len(rfstest.Feed(t, store, source)) != 1 {
 		t.Fatal("unchanged poll repeated notification")
 	}
 }
