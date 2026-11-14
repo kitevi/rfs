@@ -81,9 +81,7 @@ type Item struct {
 	Description string
 	// Metadata is opaque, versioned flow data, separate from rendered text.
 	Metadata string
-	// DateLabel overrides the HTML date; it is derived at presentation time.
-	DateLabel string
-	PubDate   time.Time
+	PubDate  time.Time
 	// Replies is the catalog reply count observed when the thread was last
 	// seen. Zero when the Flow does not report one.
 	Replies int

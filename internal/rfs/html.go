@@ -90,10 +90,15 @@ type indexView struct {
 	Build   BuildInfo
 }
 
+var (
+	indexPage = template.Must(template.New("index").Parse(indexTemplate))
+	feedPage  = template.Must(template.New("feed").Parse(feedTemplate))
+)
+
 // RenderHTMLIndex renders an HTML listing of all sources, with build info in
 // the footer.
 func RenderHTMLIndex(sources []Source, build BuildInfo) ([]byte, error) {
-	return renderTemplate("index", indexTemplate, indexView{Sources: sources, Build: build})
+	return renderTemplate(indexPage, indexView{Sources: sources, Build: build})
 }
 
 // RenderHTMLFeed renders a single source's items as an HTML page, with build
@@ -112,28 +117,18 @@ func RenderHTMLFeed(sourceID string, meta SourceMeta, items []Item, build BuildI
 			// keeps a Flow mistake from becoming a script sink.
 			description = template.HTML(safeHTML(item.Description))
 		}
-		dateLabel := item.DateLabel
-		if dateLabel == "" {
-			dateLabel = formatHTMLDate(item.PubDate)
-		}
 		view.Items = append(view.Items, feedItemView{
 			Title:       item.Title,
 			Link:        item.Link,
 			Description: description,
-			PubDate:     dateLabel,
+			PubDate:     formatHTMLDate(item.PubDate),
 		})
 	}
-	return renderTemplate("feed", feedTemplate, view)
+	return renderTemplate(feedPage, view)
 }
 
-// renderTemplate parses text as a template named name and executes it with
-// data, returning the rendered bytes. It deduplicates the render shape shared
-// by RenderHTMLIndex and RenderHTMLFeed.
-func renderTemplate(name, text string, data any) ([]byte, error) {
-	tmpl, err := template.New(name).Parse(text)
-	if err != nil {
-		return nil, err
-	}
+// renderTemplate executes a parsed page template with data.
+func renderTemplate(tmpl *template.Template, data any) ([]byte, error) {
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return nil, err
