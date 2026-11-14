@@ -249,7 +249,7 @@ func (Flow) EvaluateAt(now time.Time, raw json.RawMessage, current []rfs.Extract
 	encoded, err := encodeCheckpoint(checkpoint{
 		Version:   CheckpointVersion,
 		Announced: sortedIDs(announced),
-		Held:      heldOrNil(held),
+		Held:      held,
 	})
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
@@ -463,13 +463,6 @@ func sortedIDs(set map[string]bool) []string {
 	}
 	slices.Sort(ids)
 	return ids
-}
-
-func heldOrNil(held map[string]string) map[string]string {
-	if len(held) == 0 {
-		return nil
-	}
-	return held
 }
 
 func encodeCheckpoint(state checkpoint) (json.RawMessage, error) {

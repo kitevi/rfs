@@ -143,8 +143,8 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 	encoded, err := encodeCheckpoint(checkpoint{
 		Version:   CheckpointVersion,
 		Announced: announcedIDs(announced),
-		Tracks:    tracksOrNil(tracks),
-		Names:     namesOrNil(names),
+		Tracks:    tracks,
+		Names:     names,
 	})
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
@@ -246,20 +246,6 @@ func announcedIDs(set map[string]bool) []string {
 	}
 	sort.Strings(ids)
 	return ids
-}
-
-func namesOrNil(names map[string][]string) map[string][]string {
-	if len(names) == 0 {
-		return nil
-	}
-	return names
-}
-
-func tracksOrNil(tracks map[string]string) map[string]string {
-	if len(tracks) == 0 {
-		return nil
-	}
-	return tracks
 }
 
 func decodeCheckpoint(raw json.RawMessage) (checkpoint, error) {
