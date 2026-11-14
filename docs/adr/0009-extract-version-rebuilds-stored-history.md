@@ -1,5 +1,8 @@
 # Rebuild accumulated history from saved extraction inputs
 
+> **Status: amended by 0015.** The merge path is reached only through
+> `CommitHistory`.
+
 Amends 0003 and 0007. A full re-fetch only re-derives threads still present in
 upstream's live catalog. Retained dead threads otherwise keep stale derived
 fields indefinitely, or until normal pruning removes them.

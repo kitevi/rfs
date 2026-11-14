@@ -1,5 +1,8 @@
 # Catalog history accumulation for the board catalog sources
 
+> **Status: amended by 0015.** History is written only through
+> `CommitHistory`; `MergeHistory` is a test seed.
+
 Amends 0001 (current-state projections) for the two board catalog sources only.
 
 `ptg` (`g/catalog.json`) and `film` (`tv/catalog.json`) discover via the

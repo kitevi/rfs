@@ -1,5 +1,8 @@
 # Stateful recommendation diffs with complete collection fetches
 
+> **Status: amended by 0015.** Enrichment is one GET per batch; the JSON POST
+> alternative is removed.
+
 Amends ADR 0001 for Sources whose Flow implements `ChangeFlow`. Existing
 projection and catalog-history Sources keep their current behavior.
 
