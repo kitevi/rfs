@@ -3,6 +3,7 @@ package rfs
 import (
 	"context"
 	"errors"
+	"slices"
 )
 
 // quarantinable reports whether one item's failure may be skipped for this poll
@@ -27,12 +28,7 @@ func withoutItems(items []ExtractedItem, drop []ExtractedItem) []ExtractedItem {
 	for _, item := range drop {
 		dropGUIDs[item.GUID] = true
 	}
-	kept := make([]ExtractedItem, 0, len(items))
-	for _, item := range items {
-		if dropGUIDs[item.GUID] {
-			continue
-		}
-		kept = append(kept, item)
-	}
-	return kept
+	return slices.DeleteFunc(slices.Clone(items), func(item ExtractedItem) bool {
+		return dropGUIDs[item.GUID]
+	})
 }

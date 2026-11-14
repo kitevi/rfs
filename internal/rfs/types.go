@@ -37,7 +37,7 @@ type HistoryRebuilder interface {
 	RebuildStored(Item) (Item, error)
 }
 
-// HistoryRebuildFunc re-derives one stored item from its flow-owned Metadata.
+// HistoryRebuilderFunc re-derives one stored item from its flow-owned Metadata.
 // A nil func skips rebuilding; see CommitHistory.
 type HistoryRebuilderFunc = func(Item) (Item, error)
 

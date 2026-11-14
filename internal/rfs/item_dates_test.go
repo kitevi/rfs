@@ -103,7 +103,8 @@ func TestPollerFallsBackToFirstSeenAndRetriesAnUnreadablePage(t *testing.T) {
 			"https://example.com/index":  Page("<index>"),
 			"https://example.com/advice": Page("2026-09-05T00:00:00Z"),
 		},
-		err: map[string]error{"https://example.com/nervous": errors.New("connection reset")}}
+		err: map[string]error{"https://example.com/nervous": errors.New("connection reset")},
+	}
 	source := Source{ID: "essays", URL: "https://example.com/index", Flow: datedStub{items: []ExtractedItem{datedItem("nervous"), datedItem("advice")}}}
 	poller := Poller{Fetcher: fetcher, Store: store, Clock: fixedClock{now: now}}
 

@@ -1,11 +1,12 @@
 package malstack
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"html"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -48,7 +49,7 @@ func changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem, error)
 				Link:        animeLink(id),
 				Description: renderNotes("Added to the stack.", entry.notes),
 			}})
-		case !equalLines(prior.notes, entry.notes):
+		case !slices.Equal(prior.notes, entry.notes):
 			events = append(events, event{id: id, item: rfs.ExtractedItem{
 				GUID:        id,
 				Title:       "Notes updated: " + entry.title,
@@ -68,8 +69,8 @@ func changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem, error)
 			Description: renderNotes("Removed from the stack.", entry.notes),
 		}})
 	}
-	sort.Slice(events, func(i, j int) bool {
-		return numericID(events[i].id) < numericID(events[j].id)
+	slices.SortFunc(events, func(a, b event) int {
+		return cmp.Compare(numericID(a.id), numericID(b.id))
 	})
 	result := make([]rfs.ExtractedItem, 0, len(events))
 	for _, e := range events {
@@ -114,18 +115,6 @@ func animeLink(id string) string {
 func numericID(id string) int {
 	n, _ := strconv.Atoi(id)
 	return n
-}
-
-func equalLines(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
 
 // renderNotes presents a membership event with the current or last observed

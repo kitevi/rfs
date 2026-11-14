@@ -18,6 +18,7 @@ package visionario
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
 	"slices"
@@ -213,7 +214,8 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 		for i, film := range films {
 			slugs[i] = film.slug
 		}
-		encoded, err := encodeCheckpoint(checkpoint{Version: CheckpointVersion, Seen: sortedSlugs(setOf(slugs))})
+		slices.Sort(slugs)
+		encoded, err := json.Marshal(checkpoint{Version: CheckpointVersion, Seen: slugs})
 		if err != nil {
 			return rfs.AnnouncementDecision{}, err
 		}
@@ -251,7 +253,7 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 		item.Link = filmURL(film.slug)
 		announcements = append(announcements, item)
 	}
-	encoded, err := encodeCheckpoint(checkpoint{Version: CheckpointVersion, Seen: sortedSlugs(seen)})
+	encoded, err := json.Marshal(checkpoint{Version: CheckpointVersion, Seen: slices.Sorted(maps.Keys(seen))})
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
 	}
@@ -462,31 +464,6 @@ func titleAnchor(article *html.Node) *html.Node {
 		}
 	}
 	return nil
-}
-
-func setOf(slugs []string) map[string]bool {
-	set := make(map[string]bool, len(slugs))
-	for _, slug := range slugs {
-		set[slug] = true
-	}
-	return set
-}
-
-func sortedSlugs(set map[string]bool) []string {
-	slugs := make([]string, 0, len(set))
-	for slug := range set {
-		slugs = append(slugs, slug)
-	}
-	slices.Sort(slugs)
-	return slugs
-}
-
-func encodeCheckpoint(state checkpoint) (json.RawMessage, error) {
-	encoded, err := json.Marshal(state)
-	if err != nil {
-		return nil, fmt.Errorf("visionario: encode checkpoint: %w", err)
-	}
-	return encoded, nil
 }
 
 func decodeCheckpoint(raw json.RawMessage) (checkpoint, error) {

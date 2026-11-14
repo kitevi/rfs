@@ -128,7 +128,8 @@ func TestDatedAnnouncementFlowUsesThePollerClock(t *testing.T) {
 	now := time.Date(2026, 10, 16, 22, 0, 0, 0, time.UTC)
 	flow := &datedAnnouncementFlow{
 		items:   []ExtractedItem{announcementItem("film:1")},
-		version: 1}
+		version: 1,
+	}
 	source := Source{ID: "dated", URL: "https://example.com/films", Flow: flow}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: now}}
 	if _, err := poller.Poll(ctx, source); err != nil {
@@ -327,7 +328,8 @@ func TestAnnouncementIdentityIsResolvedBeforeEvaluate(t *testing.T) {
 	defer store.Close()
 	flow := &rewriteFlow{
 		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
-		version: 1}
+		version: 1,
+	}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
 	fetcher := urlFetcher{pages: map[string]Page{
 		source.URL:                     Page("<page>"),
@@ -354,7 +356,8 @@ func TestAnnouncementIdentityFailureQuarantinesOnlyThatItem(t *testing.T) {
 	defer store.Close()
 	flow := &rewriteFlow{
 		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
-		version: 1}
+		version: 1,
+	}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
 	fetcher := &urlFetcher{
 		pages: map[string]Page{source.URL: Page("<page>"), "https://players.test/track:9": Page("album:1")},

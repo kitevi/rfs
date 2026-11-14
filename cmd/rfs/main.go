@@ -73,37 +73,15 @@ const (
 	defaultIdleTimeout       = 120 * time.Second
 )
 
-// serverTimeouts overrides the connection timeouts; a zero field keeps the
-// production default. It exists so a test can shorten a timeout and watch the
-// server enforce it.
-type serverTimeouts struct {
-	ReadHeaderTimeout time.Duration
-	ReadTimeout       time.Duration
-	WriteTimeout      time.Duration
-	IdleTimeout       time.Duration
-}
-
 // newHTTPServer builds the feed server with bounded connection lifetimes.
-func newHTTPServer(addr string, handler http.Handler, timeouts serverTimeouts) *http.Server {
-	if timeouts.ReadHeaderTimeout <= 0 {
-		timeouts.ReadHeaderTimeout = defaultReadHeaderTimeout
-	}
-	if timeouts.ReadTimeout <= 0 {
-		timeouts.ReadTimeout = defaultReadTimeout
-	}
-	if timeouts.WriteTimeout <= 0 {
-		timeouts.WriteTimeout = defaultWriteTimeout
-	}
-	if timeouts.IdleTimeout <= 0 {
-		timeouts.IdleTimeout = defaultIdleTimeout
-	}
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
 	return &http.Server{
 		Addr:              addr,
 		Handler:           handler,
-		ReadHeaderTimeout: timeouts.ReadHeaderTimeout,
-		ReadTimeout:       timeouts.ReadTimeout,
-		WriteTimeout:      timeouts.WriteTimeout,
-		IdleTimeout:       timeouts.IdleTimeout,
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		ReadTimeout:       defaultReadTimeout,
+		WriteTimeout:      defaultWriteTimeout,
+		IdleTimeout:       defaultIdleTimeout,
 	}
 }
 
@@ -210,7 +188,7 @@ func main() {
 		close(pollsDone)
 	}()
 
-	server := newHTTPServer(*addr, rfs.NewHTTPHandler(store, registeredSources, buildInfo), serverTimeouts{})
+	server := newHTTPServer(*addr, rfs.NewHTTPHandler(store, registeredSources, buildInfo))
 	serverDone := make(chan struct{})
 	go func() {
 		defer close(serverDone)
@@ -265,12 +243,21 @@ func main() {
 // spacing as the source's own fetch instead of bursting past it.
 func gateGuard(gate *rfs.DomainGate) func(context.Context, string) error {
 	return func(ctx context.Context, rawURL string) error {
-		parsed, err := url.Parse(rawURL)
+		domain, err := hostOf(rawURL)
 		if err != nil {
 			return err
 		}
-		return gate.Acquire(ctx, parsed.Hostname())
+		return gate.Acquire(ctx, domain)
 	}
+}
+
+// hostOf returns the host name a URL points at.
+func hostOf(rawURL string) (string, error) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", err
+	}
+	return parsed.Hostname(), nil
 }
 
 func pollAll(ctx context.Context, sources []rfs.Source, poller rfs.Poller, gate *rfs.DomainGate) {
@@ -286,7 +273,7 @@ func pollAll(ctx context.Context, sources []rfs.Source, poller rfs.Poller, gate 
 }
 
 func pollOne(ctx context.Context, source rfs.Source, poller rfs.Poller, gate *rfs.DomainGate) error {
-	domain, err := sourceDomain(source)
+	domain, err := hostOf(source.URL)
 	if err != nil {
 		return err
 	}
@@ -307,14 +294,6 @@ func pollOne(ctx context.Context, source rfs.Source, poller rfs.Poller, gate *rf
 		log.Printf("poll %s: throttled, retry after %s", source.ID, result.RetryAfter)
 	}
 	return nil
-}
-
-func sourceDomain(source rfs.Source) (string, error) {
-	parsed, err := url.Parse(source.URL)
-	if err != nil {
-		return "", err
-	}
-	return parsed.Hostname(), nil
 }
 
 func logFeeds(addr string, sources []rfs.Source) {

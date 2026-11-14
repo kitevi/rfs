@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/kitevi/rfs/internal/rfs"
@@ -196,7 +196,7 @@ func (Flow) Changes(previous, current []rfs.ExtractedItem) ([]rfs.ExtractedItem,
 	for id := range old {
 		removed = append(removed, id)
 	}
-	sort.Strings(removed)
+	slices.Sort(removed)
 	for _, id := range removed {
 		if err := emit(old[id], rfs.ExtractedItem{}); err != nil {
 			return nil, err
@@ -243,6 +243,6 @@ func unique(values []string) []string {
 	for value := range set {
 		result = append(result, value)
 	}
-	sort.Strings(result)
+	slices.Sort(result)
 	return result
 }

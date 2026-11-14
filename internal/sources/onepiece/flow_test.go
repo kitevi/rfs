@@ -97,7 +97,7 @@ func chapterItems(numbers ...int) []rfs.ExtractedItem {
 
 func encodeCheckpointForTest(t *testing.T, state checkpoint) json.RawMessage {
 	t.Helper()
-	encoded, err := encodeCheckpoint(state)
+	encoded, err := json.Marshal(state)
 	if err != nil {
 		t.Fatalf("encode checkpoint: %v", err)
 	}

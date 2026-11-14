@@ -3,6 +3,7 @@ package rfs
 import (
 	"archive/tar"
 	"bytes"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"errors"
@@ -36,7 +37,7 @@ func extractBinaryFromArchive(archive []byte) ([]byte, error) {
 		if hdr.Name != "rfs" {
 			continue
 		}
-		if hdr.Typeflag != tar.TypeReg && hdr.Typeflag != tar.TypeRegA {
+		if hdr.Typeflag != tar.TypeReg {
 			return nil, fmt.Errorf("self-update: rfs entry is not a regular file")
 		}
 		if hdr.Size <= 0 || hdr.Size > maxExtractedBinaryBytes {
@@ -253,17 +254,11 @@ func (m UpdateMonitor) Run(ctx context.Context) <-chan UpdateCheckEvent {
 }
 
 func (m UpdateMonitor) checkInterval() time.Duration {
-	if m.config.CheckInterval <= 0 {
-		return defaultUpdateCheckInterval
-	}
-	return m.config.CheckInterval
+	return cmp.Or(m.config.CheckInterval, defaultUpdateCheckInterval)
 }
 
 func (m UpdateMonitor) checkTimeout() time.Duration {
-	if m.config.CheckTimeout <= 0 {
-		return defaultUpdateCheckTimeout
-	}
-	return m.config.CheckTimeout
+	return cmp.Or(m.config.CheckTimeout, defaultUpdateCheckTimeout)
 }
 
 // FileSwapper replaces the running binary on disk atomically: the old binary

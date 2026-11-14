@@ -82,7 +82,7 @@ func TestGateGuardSpacesFollowUpRequestsPerDomain(t *testing.T) {
 }
 
 func TestNewHTTPServerSetsConnectionTimeouts(t *testing.T) {
-	server := newHTTPServer(":0", http.NotFoundHandler(), serverTimeouts{})
+	server := newHTTPServer(":0", http.NotFoundHandler())
 	if server.Addr != ":0" || server.Handler == nil {
 		t.Fatalf("server = %#v, want the requested address and handler", server)
 	}
@@ -104,9 +104,8 @@ func TestNewHTTPServerClosesConnectionsThatNeverFinishHeaders(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server := newHTTPServer(listener.Addr().String(), http.NotFoundHandler(), serverTimeouts{
-		ReadHeaderTimeout: 50 * time.Millisecond,
-	})
+	server := newHTTPServer(listener.Addr().String(), http.NotFoundHandler())
+	server.ReadHeaderTimeout = 50 * time.Millisecond
 	go func() { _ = server.Serve(listener) }()
 	t.Cleanup(func() { _ = server.Close() })
 

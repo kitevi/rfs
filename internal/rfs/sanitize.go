@@ -3,6 +3,7 @@ package rfs
 import (
 	stdhtml "html"
 	"net/url"
+	"slices"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -110,12 +111,9 @@ func attributeAllowed(tag, name, value string) bool {
 }
 
 func hasAttribute(attrs []safeAttribute, name string) bool {
-	for _, attribute := range attrs {
-		if attribute.name == name {
-			return true
-		}
-	}
-	return false
+	return slices.ContainsFunc(attrs, func(attribute safeAttribute) bool {
+		return attribute.name == name
+	})
 }
 
 // safeHTTPURL accepts absolute HTTP(S) URLs, the only kind rfs publishes.

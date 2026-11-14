@@ -2,6 +2,7 @@ package meltzer
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -111,12 +112,13 @@ func extractTable(table *html.Node) []rfs.ExtractedItem {
 			parsed, err := parseMeltzerDate(dateText)
 			if err == nil {
 				pubDate = &parsed
-				datePart = parsed.Format("2006-01-02")
+				datePart = parsed.Format(time.DateOnly)
 			}
 		}
 
 		guid := "meltzer:" + datePart + ":" + slug(match) + ":" + slug(event)
-		description := strings.Join(nonEmpty([]string{promotion, starText(rating), notes}), " · ")
+		description := strings.Join(slices.DeleteFunc([]string{promotion, starText(rating), notes},
+			func(part string) bool { return part == "" }), " · ")
 
 		items = append(items, rfs.ExtractedItem{
 			GUID:        guid,
@@ -211,16 +213,6 @@ func starText(rating string) string {
 		return rating
 	}
 	return rating + " stars"
-}
-
-func nonEmpty(values []string) []string {
-	out := values[:0]
-	for _, value := range values {
-		if value != "" {
-			out = append(out, value)
-		}
-	}
-	return out
 }
 
 func slug(value string) string {

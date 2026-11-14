@@ -11,6 +11,7 @@ package cittafiera
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"net/url"
 	"regexp"
 	"slices"
@@ -211,7 +212,7 @@ func (Flow) EvaluateAt(now time.Time, raw json.RawMessage, current []rfs.Extract
 			if !idPattern.MatchString(id) {
 				return rfs.AnnouncementDecision{}, fmt.Errorf("cittafiera: invalid held id %q", id)
 			}
-			if _, err := time.Parse("2006-01-02", day); err != nil {
+			if _, err := time.Parse(time.DateOnly, day); err != nil {
 				return rfs.AnnouncementDecision{}, fmt.Errorf("cittafiera: invalid held day %q", day)
 			}
 			held[id] = day
@@ -230,7 +231,7 @@ func (Flow) EvaluateAt(now time.Time, raw json.RawMessage, current []rfs.Extract
 			return rfs.AnnouncementDecision{}, err
 		}
 		if !withinWindow(now, note.when) {
-			held[film.id] = note.when.Format("2006-01-02")
+			held[film.id] = note.when.Format(time.DateOnly)
 			continue
 		}
 		delete(held, film.id)
@@ -248,7 +249,7 @@ func (Flow) EvaluateAt(now time.Time, raw json.RawMessage, current []rfs.Extract
 	}
 	encoded, err := encodeCheckpoint(checkpoint{
 		Version:   CheckpointVersion,
-		Announced: sortedIDs(announced),
+		Announced: slices.Sorted(maps.Keys(announced)),
 		Held:      held,
 	})
 	if err != nil {
@@ -292,7 +293,7 @@ func readFilmPage(page rfs.Page) (filmNote, error) {
 		return filmNote{}, err
 	}
 	return filmNote{
-		First:    days[0].Format("2006-01-02"),
+		First:    days[0].Format(time.DateOnly),
 		Director: labeled(doc, "Regista:"),
 		Duration: labeled(doc, "Durata:"),
 	}, nil
@@ -315,7 +316,7 @@ func screeningDays(doc *html.Node) ([]time.Time, error) {
 		if seen[day] {
 			continue
 		}
-		when, err := time.Parse("2006-01-02", day)
+		when, err := time.Parse(time.DateOnly, day)
 		if err != nil {
 			return nil, fmt.Errorf("cittafiera: unrecognized day %q", raw)
 		}
@@ -377,7 +378,7 @@ func takeNote(item rfs.ExtractedItem) (resolvedNote, error) {
 	if err := json.Unmarshal([]byte(item.Metadata), &note); err != nil {
 		return resolvedNote{}, fmt.Errorf("cittafiera: decode film note: %w", err)
 	}
-	when, err := time.Parse("2006-01-02", note.First)
+	when, err := time.Parse(time.DateOnly, note.First)
 	if err != nil {
 		return resolvedNote{}, fmt.Errorf("cittafiera: film %s has no day", item.GUID)
 	}
@@ -454,15 +455,6 @@ func textWithoutClass(node *html.Node, class string) string {
 	}
 	walk(node)
 	return builder.String()
-}
-
-func sortedIDs(set map[string]bool) []string {
-	ids := make([]string, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
-	slices.Sort(ids)
-	return ids
 }
 
 func encodeCheckpoint(state checkpoint) (json.RawMessage, error) {

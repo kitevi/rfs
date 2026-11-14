@@ -3,8 +3,8 @@ package acloserlisten
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"slices"
-	"sort"
 	"strings"
 
 	"github.com/kitevi/rfs/internal/rfs"
@@ -140,9 +140,9 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 		}
 		announcements = append(announcements, candidate.item)
 	}
-	encoded, err := encodeCheckpoint(checkpoint{
+	encoded, err := json.Marshal(checkpoint{
 		Version:   CheckpointVersion,
-		Announced: announcedIDs(announced),
+		Announced: slices.Sorted(maps.Keys(announced)),
 		Tracks:    tracks,
 		Names:     names,
 	})
@@ -239,15 +239,6 @@ func releaseFromCheckpointKey(key string) (release, error) {
 	return release{kind: releaseAlbum, id: id}, nil
 }
 
-func announcedIDs(set map[string]bool) []string {
-	ids := make([]string, 0, len(set))
-	for id := range set {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
-	return ids
-}
-
 func decodeCheckpoint(raw json.RawMessage) (checkpoint, error) {
 	var state checkpoint
 	if err := json.Unmarshal(raw, &state); err != nil {
@@ -306,14 +297,4 @@ func rememberNames(names map[string][]string, key string, aliases []string) erro
 	}
 	names[rel.checkpointKey()] = append([]string{}, aliases...)
 	return nil
-}
-
-// encodeCheckpoint serializes the Flow-owned announcement state for opaque
-// storage by rfs.
-func encodeCheckpoint(state checkpoint) (json.RawMessage, error) {
-	encoded, err := json.Marshal(state)
-	if err != nil {
-		return nil, fmt.Errorf("acloserlisten: encode checkpoint: %w", err)
-	}
-	return encoded, nil
 }

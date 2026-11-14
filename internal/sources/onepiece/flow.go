@@ -9,12 +9,14 @@
 package onepiece
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"log"
+	"maps"
 	"net/url"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -122,7 +124,7 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 	}
 	if len(raw) == 0 {
 		latest := chapters[len(chapters)-1]
-		encoded, err := encodeCheckpoint(checkpoint{Version: CheckpointVersion, Initial: latest.number, Announced: []int{latest.number}})
+		encoded, err := json.Marshal(checkpoint{Version: CheckpointVersion, Initial: latest.number, Announced: []int{latest.number}})
 		if err != nil {
 			return rfs.AnnouncementDecision{}, err
 		}
@@ -151,8 +153,8 @@ func (Flow) Evaluate(raw json.RawMessage, current []rfs.ExtractedItem) (rfs.Anno
 			announced[chapter.number] = true
 		}
 	}
-	state.Announced = sortedNumbers(announced)
-	encoded, err := encodeCheckpoint(state)
+	state.Announced = slices.Sorted(maps.Keys(announced))
+	encoded, err := json.Marshal(state)
 	if err != nil {
 		return rfs.AnnouncementDecision{}, err
 	}
@@ -185,7 +187,7 @@ func observedChapters(items []rfs.ExtractedItem) ([]observed, error) {
 	for number, item := range byNumber {
 		chapters = append(chapters, observed{number: number, item: item})
 	}
-	sort.Slice(chapters, func(i, j int) bool { return chapters[i].number < chapters[j].number })
+	slices.SortFunc(chapters, func(a, b observed) int { return cmp.Compare(a.number, b.number) })
 	return chapters, nil
 }
 
@@ -201,25 +203,6 @@ func itemChapterNumber(guid string) (int, error) {
 		return 0, fmt.Errorf("onepiece: unexpected item GUID %q", guid)
 	}
 	return number, nil
-}
-
-func sortedNumbers(set map[int]bool) []int {
-	numbers := make([]int, 0, len(set))
-	for number := range set {
-		numbers = append(numbers, number)
-	}
-	sort.Ints(numbers)
-	return numbers
-}
-
-// encodeCheckpoint serializes the Flow-owned announcement state for opaque
-// storage by rfs.
-func encodeCheckpoint(state checkpoint) (json.RawMessage, error) {
-	encoded, err := json.Marshal(state)
-	if err != nil {
-		return nil, fmt.Errorf("onepiece: encode checkpoint: %w", err)
-	}
-	return encoded, nil
 }
 
 // chapterRef parses a chapter link into its number and canonical HTTPS URL.

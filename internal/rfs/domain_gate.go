@@ -91,10 +91,7 @@ func (g *DomainGate) Acquire(ctx context.Context, domain string) error {
 	if err := g.waitLocked(ctx, state); err != nil {
 		return err
 	}
-	booked := g.clock.Now().Add(g.config.MinSpacing)
-	if booked.After(state.nextAllowed) {
-		state.nextAllowed = booked
-	}
+	g.book(state, g.config.MinSpacing)
 	return nil
 }
 
@@ -104,6 +101,15 @@ func (g *DomainGate) waitForSlot(ctx context.Context, state *domainGateState) er
 	state.lock.Lock()
 	defer state.lock.Unlock()
 	return g.waitLocked(ctx, state)
+}
+
+// book moves the domain's next allowed instant to now plus delay, never back.
+// The caller holds state.lock.
+func (g *DomainGate) book(state *domainGateState, delay time.Duration) {
+	next := g.clock.Now().Add(delay)
+	if next.After(state.nextAllowed) {
+		state.nextAllowed = next
+	}
 }
 
 func (g *DomainGate) waitLocked(ctx context.Context, state *domainGateState) error {
@@ -124,10 +130,7 @@ func (g *DomainGate) recordFailure(state *domainGateState) {
 	state.lock.Lock()
 	defer state.lock.Unlock()
 
-	nextAllowed := g.clock.Now().Add(g.config.MinSpacing)
-	if nextAllowed.After(state.nextAllowed) {
-		state.nextAllowed = nextAllowed
-	}
+	g.book(state, g.config.MinSpacing)
 }
 
 func (g *DomainGate) recordSuccess(state *domainGateState) {
@@ -135,10 +138,7 @@ func (g *DomainGate) recordSuccess(state *domainGateState) {
 	defer state.lock.Unlock()
 
 	state.backoff = 0
-	nextAllowed := g.clock.Now().Add(g.config.MinSpacing)
-	if nextAllowed.After(state.nextAllowed) {
-		state.nextAllowed = nextAllowed
-	}
+	g.book(state, g.config.MinSpacing)
 }
 
 func (g *DomainGate) recordThrottle(state *domainGateState, retryAfter time.Duration) {
@@ -150,10 +150,7 @@ func (g *DomainGate) recordThrottle(state *domainGateState, retryAfter time.Dura
 		delay = g.nextBackoff(state.backoff)
 	}
 	state.backoff = delay
-	nextAllowed := g.clock.Now().Add(delay)
-	if nextAllowed.After(state.nextAllowed) {
-		state.nextAllowed = nextAllowed
-	}
+	g.book(state, delay)
 }
 
 func (g *DomainGate) stateFor(domain string) *domainGateState {
@@ -172,11 +169,7 @@ func (g *DomainGate) nextBackoff(previous time.Duration) time.Duration {
 	if previous <= 0 {
 		return g.config.InitialBackoff
 	}
-	next := previous * 2
-	if next > g.config.MaxBackoff {
-		return g.config.MaxBackoff
-	}
-	return next
+	return min(previous*2, g.config.MaxBackoff)
 }
 
 type realGateClock struct{}
