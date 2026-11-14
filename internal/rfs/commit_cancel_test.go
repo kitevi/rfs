@@ -38,7 +38,7 @@ func TestShutdownDuringCommitStillCommits(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			store := newEmissionStore(t)
+			store := newTestStore(t)
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			poller := Poller{

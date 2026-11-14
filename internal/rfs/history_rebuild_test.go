@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 	"github.com/kitevi/rfs/internal/sources/catalog"
 )
 
@@ -64,11 +65,7 @@ func TestStoredInputRoundTrip(t *testing.T) {
 
 func TestHistoryRebuildsArchivedRowsOnlyUnderPoll(t *testing.T) {
 	ctx := context.Background()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	page := rfs.Page(`[{"threads":[{"no":123,"sub":"/ptg/ - General","com":"edition","time":1788200342,"replies":1}]}]`)
 	extracted, err := catalog.PTG.Extract(page)
 	if err != nil {
@@ -126,11 +123,7 @@ func TestHistoryRebuildsArchivedRowsOnlyUnderPoll(t *testing.T) {
 
 func TestCommitHistorySkipsUndecodableRow(t *testing.T) {
 	ctx := context.Background()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	bad := rfs.Item{GUID: "ptg:bad", Title: "stale-but-kept"}
 	good := rfs.Item{GUID: "ptg:good", Title: "stale"}
 	if err := store.MergeHistory(ctx, "ptg", []rfs.Item{bad, good}, nil, 11); err != nil {
@@ -175,11 +168,7 @@ func TestCommitHistorySkipsUndecodableRow(t *testing.T) {
 
 func TestCommitHistoryRollsBackChangedIdentity(t *testing.T) {
 	ctx := context.Background()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	old := rfs.Item{GUID: "ptg:1", Title: "old"}
 	if err := store.MergeHistory(ctx, "ptg", []rfs.Item{old}, nil, 11); err != nil {
 		t.Fatal(err)

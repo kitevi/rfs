@@ -10,11 +10,7 @@ import (
 
 func TestSQLiteStoreSavesAndLoadsSnapshotAndFetchCache(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	cache := FetchCache{ETag: `"v1"`, LastModified: "Wed, 07 Apr 1982 00:00:00 GMT"}
 	if err := store.SaveFetchCache(ctx, "meltzer", cache); err != nil {
@@ -56,11 +52,7 @@ func TestSQLiteStoreSavesAndLoadsSnapshotAndFetchCache(t *testing.T) {
 
 func TestSQLiteStoreFirstSeenIsStablePerSourceAndGUID(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	first := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
 	later := first.Add(24 * time.Hour)
@@ -92,11 +84,7 @@ func TestSQLiteStoreFirstSeenIsStablePerSourceAndGUID(t *testing.T) {
 
 func TestSQLiteStorePersistsExtractVersion(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	if err := store.SaveFetchCache(ctx, "s", FetchCache{ETag: "e", LastModified: "lm", ExtractVersion: 7}); err != nil {
 		t.Fatalf("save fetch cache: %v", err)

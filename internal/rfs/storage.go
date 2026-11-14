@@ -15,10 +15,6 @@ type SQLiteStore struct {
 	db *sql.DB
 }
 
-func OpenInMemorySQLiteStore() (*SQLiteStore, error) {
-	return OpenSQLiteStore(":memory:")
-}
-
 func OpenSQLiteStore(dsn string) (*SQLiteStore, error) {
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {

@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 	"github.com/kitevi/rfs/internal/sources/malstack"
 )
 
@@ -75,11 +76,7 @@ func TestPollPublishesChangesThroughFeed(t *testing.T) {
 	)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := testSource(server.URL)
 	t0 := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 	clock := &fixedClock{at: t0}
@@ -141,11 +138,7 @@ func TestPollPreservesBaselineOnIncompleteAndFailedPages(t *testing.T) {
 		w.Write([]byte(body))
 	}))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := testSource(server.URL)
 	poller := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store, Clock: &fixedClock{at: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}}
 
@@ -254,11 +247,7 @@ func TestPollRendersHostileUpstreamTextInertly(t *testing.T) {
 	body := stackHTML(1, testEntry{id: "59878", title: "Alpha", notes: "Plain note"})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := testSource(server.URL)
 	poller := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store, Clock: &fixedClock{at: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)}}
 	if _, err := poller.Poll(context.Background(), source); err != nil {

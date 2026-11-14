@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 	"github.com/kitevi/rfs/internal/sources/catalog"
 )
 
@@ -74,11 +75,7 @@ func stalePrefixCount(t *testing.T, store *rfs.SQLiteStore) []string {
 
 // The version bump must rewrite rows the catalog no longer lists.
 func TestPollRepairsLegacyTitlesOnExtractVersionChange(t *testing.T) {
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	seedStaleTitles(t, store, catalog.PTG.ExtractVersion-1)
 	pollPTG(t, store, catalog.PTG)
 
@@ -96,11 +93,7 @@ func TestPollRepairsLegacyTitlesOnExtractVersionChange(t *testing.T) {
 
 // The rebuild is gated on the version change.
 func TestPollSkipsRebuildWhenVersionUnchanged(t *testing.T) {
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	seedStaleTitles(t, store, catalog.PTG.ExtractVersion)
 	pollPTG(t, store, catalog.PTG)
 
@@ -111,11 +104,7 @@ func TestPollSkipsRebuildWhenVersionUnchanged(t *testing.T) {
 
 // A flow without a rebuilder leaves stored titles untouched on a bump.
 func TestPollLeavesTitlesForFlowWithoutRebuilder(t *testing.T) {
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	seedStaleTitles(t, store, 1)
 	pollPTG(t, store, plainFlow{version: 2})
 

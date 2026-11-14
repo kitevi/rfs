@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 	"github.com/kitevi/rfs/internal/sources/seadex"
 )
 
@@ -63,11 +64,7 @@ func TestPaginationFailureDoesNotPublishOrConsumeChanges(t *testing.T) {
 		w.Write([]byte(page(before, 1)))
 	}))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{}}
 	poller := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := poller.Poll(context.Background(), source); err != nil {
@@ -156,11 +153,7 @@ func TestUnmuxedBestAndTagsPublishWithoutGroupChanges(t *testing.T) {
 	body := before
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
@@ -200,11 +193,7 @@ func TestUpdatesIncludeAnimeTitleCoverAndSafeHTML(t *testing.T) {
 		w.Write([]byte(body))
 	}))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Meta: rfs.SourceMeta{ItemDescriptionsHTML: true}, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
@@ -255,11 +244,7 @@ func TestMalformedResponsesCannotEraseRecommendations(t *testing.T) {
 			body := before
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 			defer server.Close()
-			store, err := rfs.OpenInMemorySQLiteStore()
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer store.Close()
+			store := rfstest.Store(t)
 			source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{}}
 			p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 			if _, err := p.Poll(context.Background(), source); err != nil {
@@ -288,11 +273,7 @@ func TestNoteReorderingIsAnUpdate(t *testing.T) {
 	body = strings.Replace(body, `"unused":`, `"notes":"first\nsecond\nfirst","unused":`, 1)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
@@ -311,11 +292,7 @@ func TestReleaseReplacementWithinSameGroupPublishes(t *testing.T) {
 	body := before
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
@@ -347,11 +324,7 @@ func TestMetadataThrottlePreservesPendingChangeAndRetryAfter(t *testing.T) {
 		w.Write([]byte(body))
 	}))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
@@ -385,11 +358,7 @@ func TestUnavailableCoverDoesNotBlockTextUpdate(t *testing.T) {
 		w.Write([]byte(body))
 	}))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
@@ -409,11 +378,7 @@ func TestKingsGameRecommendationDiffAppearsAfterSilentBaseline(t *testing.T) {
 	body := before
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(body)) }))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{}}
 	poller := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	poll := func() {

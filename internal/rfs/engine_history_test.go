@@ -31,11 +31,7 @@ func (f *histFlow) Version() int { return f.version }
 
 func TestPollerMergesHistoryInsteadOfReplacing(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	hist := &HistoryPolicy{VisibleLimit: 10, StoredLimit: 11, MinLiveReplies: 100}
@@ -71,11 +67,7 @@ func TestPollerMergesHistoryInsteadOfReplacing(t *testing.T) {
 
 func TestPollerPreservesLiveStateOnEmptySuccessfulObservation(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	seed := []Item{{GUID: "ptg:1", Title: "A", Link: "https://example.com/1", Description: "d", PubDate: now, Replies: 300}}
@@ -104,11 +96,7 @@ func TestPollerPreservesLiveStateOnEmptySuccessfulObservation(t *testing.T) {
 
 func TestPollerPreservesHistoryOnExtractError(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	hist := &HistoryPolicy{VisibleLimit: 10, StoredLimit: 11, MinLiveReplies: 100}

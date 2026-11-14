@@ -9,11 +9,7 @@ import (
 
 func TestHistoryCheckpointFailureRollsBack(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	old := Item{GUID: "old", Title: "old", PubDate: time.Unix(1000, 0).UTC()}
 	if err := store.MergeHistory(ctx, "s", []Item{old}, []string{"old"}, 11); err != nil {
 		t.Fatal(err)
@@ -26,7 +22,7 @@ func TestHistoryCheckpointFailureRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	fresh := Item{GUID: "new", Title: "new", PubDate: old.PubDate.Add(time.Hour)}
-	err = store.CommitHistory(ctx, "s", []Item{fresh}, []string{"new"}, 1, FetchCache{ExtractVersion: 2}, func(item Item) (Item, error) { item.Title = "rebuilt"; return item, nil })
+	err := store.CommitHistory(ctx, "s", []Item{fresh}, []string{"new"}, 1, FetchCache{ExtractVersion: 2}, func(item Item) (Item, error) { item.Title = "rebuilt"; return item, nil })
 	if err == nil {
 		t.Fatal("expected checkpoint failure")
 	}

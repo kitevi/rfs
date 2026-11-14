@@ -8,11 +8,7 @@ import (
 
 func TestPollerStoresExtractedSnapshotAndAppliesFirstSeenFallback(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
 	sourceDate := time.Date(1982, 4, 7, 0, 0, 0, 0, time.UTC)
@@ -63,11 +59,7 @@ func TestPollerStoresExtractedSnapshotAndAppliesFirstSeenFallback(t *testing.T) 
 
 func TestPollerDeduplicatesExtractedGUIDsBeforeSavingSnapshot(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	pubDate := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
 	fetcher := &fakeFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}
@@ -77,7 +69,7 @@ func TestPollerDeduplicatesExtractedGUIDsBeforeSavingSnapshot(t *testing.T) {
 	}}
 	poller := Poller{Fetcher: fetcher, Store: store, Clock: fixedClock{now: pubDate}}
 
-	_, err = poller.Poll(ctx, Source{ID: "meltzer", URL: "https://example.com", Flow: flow})
+	_, err := poller.Poll(ctx, Source{ID: "meltzer", URL: "https://example.com", Flow: flow})
 	if err != nil {
 		t.Fatalf("Poll returned error: %v", err)
 	}
@@ -93,11 +85,7 @@ func TestPollerDeduplicatesExtractedGUIDsBeforeSavingSnapshot(t *testing.T) {
 
 func TestPollerSkipsFlowWhenSourceNotModified(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	if err := store.SaveFetchCache(ctx, "meltzer", FetchCache{ETag: `"v1"`}); err != nil {
 		t.Fatalf("save cache: %v", err)
 	}
@@ -152,11 +140,7 @@ func (c fixedClock) Now() time.Time { return c.now }
 
 func TestPollerForcesUnconditionalFetchWhenFlowVersionAdvances(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	// The stored snapshot was derived by version 1; the running Flow is version 2.
 	if err := store.SaveFetchCache(ctx, "meltzer", FetchCache{ETag: `"v1"`, ExtractVersion: 1}); err != nil {
 		t.Fatalf("save fetch cache: %v", err)
@@ -199,11 +183,7 @@ func TestPollerForcesUnconditionalFetchWhenFlowVersionAdvances(t *testing.T) {
 
 func TestPollerKeepsConditionalFetchWhenFlowVersionMatches(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	if err := store.SaveFetchCache(ctx, "meltzer", FetchCache{ETag: `"v1"`, ExtractVersion: 1}); err != nil {
 		t.Fatalf("save fetch cache: %v", err)
 	}

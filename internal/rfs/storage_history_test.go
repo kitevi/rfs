@@ -52,11 +52,7 @@ func equalGUIDs(got []Item, want []string) bool {
 
 func TestMergeHistoryAccumulatesAcrossPolls(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	a := historyItem("ptg:1", 10, 200)
 	if err := store.MergeHistory(ctx, "ptg", []Item{a}, []string{"ptg:1"}, 11); err != nil {
@@ -93,11 +89,7 @@ func TestMergeHistoryAccumulatesAcrossPolls(t *testing.T) {
 
 func TestLoadVisibleHistoryShowsMatureLive(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	old := historyItem("ptg:1", 5, 300)
 	live := historyItem("ptg:2", 0, 150)
@@ -123,11 +115,7 @@ func TestLoadVisibleHistoryShowsMatureLive(t *testing.T) {
 
 func TestMergeHistoryPrunesBeyondStoredLimitButNeverLive(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	// Seed 12 dead threads + 1 live = 13 rows, keepStored=11 keeps newest 11 incl live.
 	var seed []Item
@@ -180,11 +168,7 @@ func TestMergeHistoryPrunesBeyondStoredLimitButNeverLive(t *testing.T) {
 
 func TestMergeHistoryHidesAllLiveDuringHandover(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	old := historyItem("ptg:1", 5, 400)
 	b := historyItem("ptg:2", 1, 5)
@@ -240,11 +224,7 @@ func TestMergeHistoryMigratesPreRepliesDatabase(t *testing.T) {
 
 func TestMergeHistoryUpsertsRepliesAndMetadata(t *testing.T) {
 	ctx := context.Background()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	first := historyItem("ptg:1", 1, 5)
 	if err := store.MergeHistory(ctx, "ptg", []Item{first}, []string{"ptg:1"}, 11); err != nil {

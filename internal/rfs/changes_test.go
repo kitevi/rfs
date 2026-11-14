@@ -38,9 +38,9 @@ func (f *emissionFlow) Changes(previous, current []ExtractedItem) ([]ExtractedIt
 	return changes, nil
 }
 
-func newEmissionStore(t *testing.T) *SQLiteStore {
+func newTestStore(t *testing.T) *SQLiteStore {
 	t.Helper()
-	store, err := OpenInMemorySQLiteStore()
+	store, err := OpenSQLiteStore(":memory:")
 	if err != nil {
 		t.Fatalf("open store: %v", err)
 	}
@@ -50,7 +50,7 @@ func newEmissionStore(t *testing.T) *SQLiteStore {
 
 func TestPollerKeepsFirstObservationSilentByDefault(t *testing.T) {
 	ctx := context.Background()
-	store := newEmissionStore(t)
+	store := newTestStore(t)
 	flow := &emissionFlow{items: []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}, version: 1}
 	source := Source{ID: "seadex", URL: "https://example.com/feed", Flow: flow}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
@@ -76,7 +76,7 @@ func TestPollerKeepsFirstObservationSilentByDefault(t *testing.T) {
 
 func TestPollerRebaselinesSilentlyOnVersionBump(t *testing.T) {
 	ctx := context.Background()
-	store := newEmissionStore(t)
+	store := newTestStore(t)
 	flow := &emissionFlow{items: []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}, version: 1}
 	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
@@ -108,7 +108,7 @@ func TestPollerRebaselinesSilentlyOnVersionBump(t *testing.T) {
 
 func TestPollerEmitsDistinctRevisionGUIDsForRepeatedTransitions(t *testing.T) {
 	ctx := context.Background()
-	store := newEmissionStore(t)
+	store := newTestStore(t)
 	flow := &emissionFlow{items: []ExtractedItem{{GUID: "a", Title: "A", Description: "a"}}, version: 1}
 	source := Source{ID: "notices", URL: "https://example.com/feed", Flow: flow}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: time.Now()}}
@@ -151,7 +151,7 @@ func (f *datedEmissionFlow) Changes(previous, current []ExtractedItem) ([]Extrac
 
 func TestPollerHonorsExtractedChangePubDate(t *testing.T) {
 	ctx := context.Background()
-	store := newEmissionStore(t)
+	store := newTestStore(t)
 	published := time.Date(2026, 9, 4, 10, 6, 44, 0, time.UTC)
 	flow := &datedEmissionFlow{pubDate: published}
 	flow.items = []ExtractedItem{{GUID: "a", Title: "A", Description: "state-a"}}

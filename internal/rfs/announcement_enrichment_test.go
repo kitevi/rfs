@@ -138,11 +138,7 @@ func albums(count int) []ExtractedItem {
 func newAlbumPoller(t *testing.T, plan *metadataPlan) (*resolverFlow, Source, Poller, *SQLiteStore, func() []string) {
 	t.Helper()
 	server, requests := albumServer(t, plan)
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { store.Close() })
+	store := newTestStore(t)
 	flow := &resolverFlow{items: albums(2), base: server.URL}
 	source := Source{ID: "albums", URL: server.URL, Flow: flow}
 	return flow, source, Poller{Fetcher: NewHTTPFetcher(server.Client()), Store: store}, store, requests
@@ -307,11 +303,7 @@ func (f *partialFlow) AnnouncementEnrichmentURL(item ExtractedItem) (string, err
 func TestAnnouncementEnrichmentSkipsItemsWithoutAMetadataURL(t *testing.T) {
 	ctx := t.Context()
 	server, requests := albumServer(t, &metadataPlan{})
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	flow := &partialFlow{resolverFlow: &resolverFlow{items: albums(2), base: server.URL}}
 	source := Source{ID: "albums", URL: server.URL, Flow: flow}
 	poller := Poller{Fetcher: NewHTTPFetcher(server.Client()), Store: store}
@@ -343,11 +335,7 @@ func TestAnnouncementEnrichmentSkipsItemsWithoutAMetadataURL(t *testing.T) {
 func TestAnnouncementEnrichmentResolvesLargeBatches(t *testing.T) {
 	ctx := t.Context()
 	server, _ := albumServer(t, &metadataPlan{})
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	flow := &resolverFlow{items: albums(60), base: server.URL}
 	source := Source{ID: "albums", URL: server.URL, Flow: flow}
 	poller := Poller{Fetcher: NewHTTPFetcher(server.Client()), Store: store}

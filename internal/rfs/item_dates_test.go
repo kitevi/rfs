@@ -42,11 +42,7 @@ func datedItem(slug string) ExtractedItem {
 }
 
 func TestPollerDatesItemsFromTheirPagesOnce(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC)
 	fetcher := &datedFetcher{pages: map[string]Page{
@@ -91,11 +87,7 @@ func TestPollerDatesItemsFromTheirPagesOnce(t *testing.T) {
 }
 
 func TestPollerFallsBackToFirstSeenAndRetriesAnUnreadablePage(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC)
 	fetcher := &datedFetcher{
@@ -150,11 +142,7 @@ func TestPollerFallsBackToFirstSeenAndRetriesAnUnreadablePage(t *testing.T) {
 }
 
 func TestPollerStopsDatingWhenAnItemPageThrottles(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	fetcher := throttlingItemFetcher{index: "https://example.com/index"}
 	source := Source{ID: "essays", URL: "https://example.com/index", Flow: datedStub{items: []ExtractedItem{datedItem("nervous")}}}

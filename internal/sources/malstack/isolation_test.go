@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 	"github.com/kitevi/rfs/internal/sources"
 )
 
@@ -22,11 +23,7 @@ func TestPollKeepsMALStacksIndependent(t *testing.T) {
 		w.Write([]byte(bodies[r.URL.Path]))
 	}))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	var watched []rfs.Source
 	byID := map[string]rfs.Source{}
 	for _, source := range sources.All() {

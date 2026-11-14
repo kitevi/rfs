@@ -9,11 +9,7 @@ import (
 )
 
 func TestHTTPHandlerServesVisibleHistoryHidingImmatureLive(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	old := Item{GUID: "ptg:1", Title: "Old", Link: "https://example.com/1", Description: "d", PubDate: now.Add(-48 * time.Hour), Replies: 300}

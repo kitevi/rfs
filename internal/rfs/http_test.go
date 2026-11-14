@@ -19,11 +19,7 @@ var testBuildInfo = BuildInfo{
 }
 
 func TestHTTPHandlerServesStoredSnapshotAsRSS(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	pubDate := time.Date(1982, 4, 7, 0, 0, 0, 0, time.UTC)
 	if err := store.SaveSnapshot(t.Context(), "meltzer", []Item{{
@@ -64,11 +60,7 @@ func TestHTTPHandlerServesStoredSnapshotAsRSS(t *testing.T) {
 }
 
 func TestHTTPHandlerReturns404ForUnknownFeed(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	handler := NewHTTPHandler(store, []Source{{ID: "meltzer", Meta: SourceMeta{Title: "Meltzer"}}}, testBuildInfo)
 	recorder := httptest.NewRecorder()
@@ -80,11 +72,7 @@ func TestHTTPHandlerReturns404ForUnknownFeed(t *testing.T) {
 }
 
 func TestHTTPHandlerServesIndexPage(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	handler := NewHTTPHandler(store, []Source{{
 		ID:   "meltzer",
@@ -119,11 +107,7 @@ func TestHTTPHandlerServesIndexPage(t *testing.T) {
 }
 
 func TestHTTPHandlerServesFeedAsHTML(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	pubDate := time.Date(1982, 4, 7, 0, 0, 0, 0, time.UTC)
 	if err := store.SaveSnapshot(t.Context(), "meltzer", []Item{{
@@ -169,11 +153,7 @@ func TestHTTPHandlerServesFeedAsHTML(t *testing.T) {
 }
 
 func TestHTTPHandlerReturns404ForUnknownFeedFormat(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	handler := NewHTTPHandler(store, []Source{{
 		ID:   "meltzer",
@@ -189,11 +169,7 @@ func TestHTTPHandlerReturns404ForUnknownFeedFormat(t *testing.T) {
 }
 
 func TestHTTPHandlerAnswersHeadAndConditionalRequests(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	if err := store.SaveSnapshot(t.Context(), "meltzer", []Item{{
 		GUID: "meltzer:1", Title: "Match", Link: "https://example.com/meltzer", PubDate: time.Date(1982, 4, 7, 0, 0, 0, 0, time.UTC),
 	}}); err != nil {

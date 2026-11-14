@@ -41,11 +41,7 @@ func (paginatedStub) Extract(page Page) ([]ExtractedItem, error) {
 }
 
 func TestPollerSpacesFollowUpCollectionPages(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	recorder := &secondaryRecorder{}
 	fetcher := urlFetcher{pages: map[string]Page{
@@ -64,11 +60,7 @@ func TestPollerSpacesFollowUpCollectionPages(t *testing.T) {
 }
 
 func TestPollerSpacesIdentityFetches(t *testing.T) {
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	recorder := &secondaryRecorder{}
 	flow := &rewriteFlow{
@@ -92,11 +84,7 @@ func TestPollerSpacesIdentityFetches(t *testing.T) {
 
 func TestPollerSpacesAnnouncementMetadataFetches(t *testing.T) {
 	server, _ := albumServer(t, &metadataPlan{})
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	recorder := &secondaryRecorder{}
 	flow := &resolverFlow{items: albums(2), base: server.URL}

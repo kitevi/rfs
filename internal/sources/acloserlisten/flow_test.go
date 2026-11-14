@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 )
 
 // pageJSON builds the WordPress response body the Flow consumes.
@@ -554,11 +555,7 @@ func TestEvaluateTreatsANamedAlbumAndItsPlayerAsOneRelease(t *testing.T) {
 
 func TestPollReadsEachAlbumPlayerOnceAndSkipsTheNamedDuplicate(t *testing.T) {
 	ctx := t.Context()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	flow := Flow{}
 	lede := `<p><strong>Nero&#8217;s Day at Disneyland</strong> offers <em>Grand Reopening,</em> after 17 years.</p>`
 	fetcher := &pageFetcher{pages: map[string]rfs.Page{PageURL: pageJSON(t, PageID, lede+trackEmbed(687192546))}}
@@ -691,11 +688,7 @@ func TestEvaluateAnnouncesANewStandaloneTrackWithoutRepeatingAlbums(t *testing.T
 
 func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testing.T) {
 	ctx := t.Context()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	flow := Flow{}
 	fetcher := &pageFetcher{pages: map[string]rfs.Page{
 		PageURL: pageJSON(t, PageID, section("Ambient", 1)+section("Drone", 2)),

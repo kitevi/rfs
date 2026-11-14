@@ -119,11 +119,7 @@ func (f *datedAnnouncementFlow) EvaluateAt(now time.Time, checkpoint json.RawMes
 
 func TestDatedAnnouncementFlowUsesThePollerClock(t *testing.T) {
 	ctx := t.Context()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	now := time.Date(2026, 10, 16, 22, 0, 0, 0, time.UTC)
 	flow := &datedAnnouncementFlow{
@@ -148,11 +144,7 @@ func TestAnnouncementFlowsAlwaysFetchTheFullPage(t *testing.T) {
 
 func TestAnnouncementPollPublishesEachItemOnce(t *testing.T) {
 	ctx := t.Context()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 
 	flow := &announcementTestFlow{items: []ExtractedItem{announcementItem("chapter:1")}, version: 1}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
@@ -238,11 +230,7 @@ func TestAnnouncementDedupSurvivesRestart(t *testing.T) {
 
 func TestAnnouncementCommitFailurePreservesCheckpointAndFeed(t *testing.T) {
 	ctx := t.Context()
-	base, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer base.Close()
+	base := newTestStore(t)
 	store := &failingCommitStore{SQLiteStore: base}
 	flow := &announcementTestFlow{items: []ExtractedItem{announcementItem("chapter:1")}, version: 1}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
@@ -321,11 +309,7 @@ func (f *rewriteFlow) ResolveIdentity(page Page, item ExtractedItem) (ExtractedI
 
 func TestAnnouncementIdentityIsResolvedBeforeEvaluate(t *testing.T) {
 	ctx := t.Context()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	flow := &rewriteFlow{
 		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
 		version: 1,
@@ -349,11 +333,7 @@ func TestAnnouncementIdentityIsResolvedBeforeEvaluate(t *testing.T) {
 
 func TestAnnouncementIdentityFailureQuarantinesOnlyThatItem(t *testing.T) {
 	ctx := t.Context()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	flow := &rewriteFlow{
 		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
 		version: 1,
@@ -399,14 +379,10 @@ func TestAnnouncementIdentityFailureQuarantinesOnlyThatItem(t *testing.T) {
 
 func TestAnnouncementFlowCannotAlsoCompareChanges(t *testing.T) {
 	ctx := t.Context()
-	store, err := OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatalf("open store: %v", err)
-	}
-	defer store.Close()
+	store := newTestStore(t)
 	flow := &compareAndAnnounceFlow{announcementTestFlow{items: []ExtractedItem{announcementItem("chapter:1")}, version: 1}}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store}
-	_, err = poller.Poll(ctx, Source{ID: "ambiguous", URL: "https://example.com/archive", Flow: flow})
+	_, err := poller.Poll(ctx, Source{ID: "ambiguous", URL: "https://example.com/archive", Flow: flow})
 	if err == nil || !strings.Contains(err.Error(), "cannot both announce and compare changes") {
 		t.Fatalf("poll error = %v, want an ambiguity rejection", err)
 	}

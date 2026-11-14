@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 	"github.com/kitevi/rfs/internal/sources"
 )
 
@@ -18,11 +19,7 @@ func TestLiveSeaDex(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(&http.Client{Timeout: 30 * time.Second}), Store: store}
 	for _, source := range sources.All() {
 		if source.ID != "seadex" {

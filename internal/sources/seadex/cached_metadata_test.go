@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/kitevi/rfs/internal/rfs"
+	"github.com/kitevi/rfs/internal/rfstest"
 	"github.com/kitevi/rfs/internal/sources/seadex"
 )
 
@@ -31,11 +32,7 @@ func TestCachedMetadataPublishesDiffWithoutAniListPOST(t *testing.T) {
 		w.Write([]byte(body))
 	}))
 	defer server.Close()
-	store, err := rfs.OpenInMemorySQLiteStore()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer store.Close()
+	store := rfstest.Store(t)
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
