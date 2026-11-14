@@ -24,6 +24,12 @@ func (f *announcementTestFlow) Extract(Page) ([]ExtractedItem, error) { return f
 func (f *announcementTestFlow) Version() int { return f.version }
 
 func (f *announcementTestFlow) Evaluate(checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error) {
+	return announceOnce(checkpoint, current)
+}
+
+// announceOnce announces every observed item once and stores the announced
+// GUIDs, sorted, in its JSON checkpoint.
+func announceOnce(checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error) {
 	announced := map[string]bool{}
 	if len(checkpoint) > 0 {
 		var stored []string

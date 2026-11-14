@@ -13,7 +13,7 @@ func TestPollerStoresExtractedSnapshotAndAppliesFirstSeenFallback(t *testing.T) 
 	now := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
 	sourceDate := time.Date(1982, 4, 7, 0, 0, 0, 0, time.UTC)
 	fetcher := &fakeFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage(), Cache: FetchCache{ETag: `"v1"`}}}
-	flow := &fakeFlow{items: []ExtractedItem{
+	flow := &testFlow{items: []ExtractedItem{
 		{GUID: "with-source-date", Title: "With source date", Link: "https://example.com/a", PubDate: &sourceDate},
 		{GUID: "needs-first-seen", Title: "Needs first seen", Link: "https://example.com/b"},
 	}}
@@ -63,7 +63,7 @@ func TestPollerDeduplicatesExtractedGUIDsBeforeSavingSnapshot(t *testing.T) {
 
 	pubDate := time.Date(2026, 7, 6, 12, 0, 0, 0, time.UTC)
 	fetcher := &fakeFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}
-	flow := &fakeFlow{items: []ExtractedItem{
+	flow := &testFlow{items: []ExtractedItem{
 		{GUID: "duplicate", Title: "First", Link: "https://example.com/a", PubDate: &pubDate},
 		{GUID: "duplicate", Title: "Second", Link: "https://example.com/b", PubDate: &pubDate},
 	}}
@@ -90,7 +90,7 @@ func TestPollerSkipsFlowWhenSourceNotModified(t *testing.T) {
 		t.Fatalf("save cache: %v", err)
 	}
 
-	flow := &fakeFlow{}
+	flow := &testFlow{}
 	fetcher := &fakeFetcher{result: FetchResult{Status: FetchNotModified, Cache: FetchCache{ETag: `"v1"`}}}
 	poller := Poller{Fetcher: fetcher, Store: store, Clock: fixedClock{now: time.Now()}}
 
@@ -119,20 +119,24 @@ func (f *fakeFetcher) Fetch(ctx context.Context, url string, cache FetchCache) (
 	return f.result, nil
 }
 
-type fakeFlow struct {
+// testFlow is the minimal Flow the poller tests need: fixed items or an
+// error, a version, and a record of whether Extract ran.
+type testFlow struct {
 	items   []ExtractedItem
+	err     error
 	called  bool
 	version int
 }
 
-func (f *fakeFlow) Extract(page Page) ([]ExtractedItem, error) {
+func (f *testFlow) Extract(Page) ([]ExtractedItem, error) {
 	f.called = true
+	if f.err != nil {
+		return nil, f.err
+	}
 	return f.items, nil
 }
 
-// Version reports the fakeFlow's extraction version so tests can exercise the
-// version-mismatch invalidation path.
-func (f *fakeFlow) Version() int { return f.version }
+func (f *testFlow) Version() int { return f.version }
 
 type fixedClock struct{ now time.Time }
 
@@ -151,7 +155,7 @@ func TestPollerForcesUnconditionalFetchWhenFlowVersionAdvances(t *testing.T) {
 		Page:   emptyPage(),
 		Cache:  FetchCache{ETag: `"v2"`},
 	}}
-	flow := &fakeFlow{
+	flow := &testFlow{
 		items:   []ExtractedItem{{GUID: "g", Title: "T", Link: "https://example.com", PubDate: &now}},
 		version: 2,
 	}
@@ -187,7 +191,7 @@ func TestPollerKeepsConditionalFetchWhenFlowVersionMatches(t *testing.T) {
 	if err := store.SaveFetchCache(ctx, "meltzer", FetchCache{ETag: `"v1"`, ExtractVersion: 1}); err != nil {
 		t.Fatalf("save fetch cache: %v", err)
 	}
-	flow := &fakeFlow{version: 1}
+	flow := &testFlow{version: 1}
 	fetcher := &fakeFetcher{result: FetchResult{Status: FetchNotModified, Cache: FetchCache{ETag: `"v1"`}}}
 	poller := Poller{Fetcher: fetcher, Store: store, Clock: fixedClock{now: time.Now()}}
 

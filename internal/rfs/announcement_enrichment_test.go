@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,33 +31,7 @@ func (f *resolverFlow) Extract(Page) ([]ExtractedItem, error) { return f.items, 
 func (*resolverFlow) Version() int { return 1 }
 
 func (f *resolverFlow) Evaluate(checkpoint json.RawMessage, current []ExtractedItem) (AnnouncementDecision, error) {
-	announced := map[string]bool{}
-	if len(checkpoint) > 0 {
-		var stored []string
-		if err := json.Unmarshal(checkpoint, &stored); err != nil {
-			return AnnouncementDecision{}, err
-		}
-		for _, guid := range stored {
-			announced[guid] = true
-		}
-	}
-	var announcements []ExtractedItem
-	for _, item := range current {
-		if !announced[item.GUID] {
-			announcements = append(announcements, item)
-			announced[item.GUID] = true
-		}
-	}
-	guids := make([]string, 0, len(announced))
-	for guid := range announced {
-		guids = append(guids, guid)
-	}
-	sort.Strings(guids)
-	encoded, err := json.Marshal(guids)
-	if err != nil {
-		return AnnouncementDecision{}, err
-	}
-	return AnnouncementDecision{Checkpoint: encoded, Announcements: announcements}, nil
+	return announceOnce(checkpoint, current)
 }
 
 func (f *resolverFlow) AnnouncementEnrichmentURL(item ExtractedItem) (string, error) {

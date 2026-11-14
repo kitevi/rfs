@@ -7,41 +7,19 @@ import (
 	"time"
 )
 
-type histFetcher struct {
-	result FetchResult
-}
-
-func (f *histFetcher) Fetch(_ context.Context, _ string, _ FetchCache) (FetchResult, error) {
-	return f.result, nil
-}
-
-type histFlow struct {
-	items   []ExtractedItem
-	err     error
-	version int
-}
-
-func (f *histFlow) Extract(_ Page) ([]ExtractedItem, error) {
-	if f.err != nil {
-		return nil, f.err
-	}
-	return f.items, nil
-}
-func (f *histFlow) Version() int { return f.version }
-
 func TestPollerMergesHistoryInsteadOfReplacing(t *testing.T) {
 	ctx := context.Background()
 	store := newTestStore(t)
 
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.UTC)
 	hist := &HistoryPolicy{VisibleLimit: 10, StoredLimit: 11, MinLiveReplies: 100}
-	src := Source{ID: "ptg", URL: "https://example.com", Flow: &histFlow{items: []ExtractedItem{{GUID: "ptg:1", Title: "A", Link: "https://example.com/1", PubDate: &now, Replies: 200}}}, History: hist}
-	poller := Poller{Fetcher: &histFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}, Store: store, Clock: fixedClock{now: now}}
+	src := Source{ID: "ptg", URL: "https://example.com", Flow: &testFlow{items: []ExtractedItem{{GUID: "ptg:1", Title: "A", Link: "https://example.com/1", PubDate: &now, Replies: 200}}}, History: hist}
+	poller := Poller{Fetcher: &fakeFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}, Store: store, Clock: fixedClock{now: now}}
 	if _, err := poller.Poll(ctx, src); err != nil {
 		t.Fatalf("poll1: %v", err)
 	}
 	later := now.Add(24 * time.Hour)
-	src.Flow = &histFlow{items: []ExtractedItem{{GUID: "ptg:2", Title: "B", Link: "https://example.com/2", PubDate: &later, Replies: 5}}}
+	src.Flow = &testFlow{items: []ExtractedItem{{GUID: "ptg:2", Title: "B", Link: "https://example.com/2", PubDate: &later, Replies: 5}}}
 	poller.Clock = fixedClock{now: later}
 	if _, err := poller.Poll(ctx, src); err != nil {
 		t.Fatalf("poll2: %v", err)
@@ -76,8 +54,8 @@ func TestPollerPreservesLiveStateOnEmptySuccessfulObservation(t *testing.T) {
 	}
 	// A parseable catalog gap yields zero items without an error; the poll
 	// must preserve the stored live set instead of clearing it.
-	src := Source{ID: "ptg", URL: "https://example.com", Flow: &histFlow{items: nil}, History: &HistoryPolicy{VisibleLimit: 10, StoredLimit: 11, MinLiveReplies: 100}}
-	poller := Poller{Fetcher: &histFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}, Store: store, Clock: fixedClock{now: now}}
+	src := Source{ID: "ptg", URL: "https://example.com", Flow: &testFlow{items: nil}, History: &HistoryPolicy{VisibleLimit: 10, StoredLimit: 11, MinLiveReplies: 100}}
+	poller := Poller{Fetcher: &fakeFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}, Store: store, Clock: fixedClock{now: now}}
 	if _, err := poller.Poll(ctx, src); err != nil {
 		t.Fatalf("poll: %v", err)
 	}
@@ -104,8 +82,8 @@ func TestPollerPreservesHistoryOnExtractError(t *testing.T) {
 	if err := store.MergeHistory(ctx, "ptg", seed, []string{}, 11); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
-	src := Source{ID: "ptg", URL: "https://example.com", Flow: &histFlow{err: errors.New("ptg: no matching threads")}, History: hist}
-	poller := Poller{Fetcher: &histFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}, Store: store, Clock: fixedClock{now: now}}
+	src := Source{ID: "ptg", URL: "https://example.com", Flow: &testFlow{err: errors.New("ptg: no matching threads")}, History: hist}
+	poller := Poller{Fetcher: &fakeFetcher{result: FetchResult{Status: FetchModified, Page: emptyPage()}}, Store: store, Clock: fixedClock{now: now}}
 	if _, err := poller.Poll(ctx, src); err == nil {
 		t.Fatal("expected extract error")
 	}

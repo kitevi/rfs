@@ -23,17 +23,12 @@ func (s shutdownDuringCommitStore) CommitAnnouncements(ctx context.Context, sour
 	return s.SQLiteStore.CommitAnnouncements(ctx, sourceID, checkpoint, items, cache)
 }
 
-type projectionStubFlow struct{ items []ExtractedItem }
-
-func (f projectionStubFlow) Extract(Page) ([]ExtractedItem, error) { return f.items, nil }
-func (projectionStubFlow) Version() int                            { return 1 }
-
 func TestShutdownDuringCommitStillCommits(t *testing.T) {
 	cases := []struct {
 		name string
 		flow Flow
 	}{
-		{"projection", projectionStubFlow{items: []ExtractedItem{announcementItem("1")}}},
+		{"projection", &testFlow{version: 1, items: []ExtractedItem{announcementItem("1")}}},
 		{"announcement", &announcementTestFlow{items: []ExtractedItem{announcementItem("1")}, version: 1}},
 	}
 	for _, tc := range cases {
