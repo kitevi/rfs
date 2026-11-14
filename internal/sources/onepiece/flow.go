@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/kitevi/rfs/internal/dom"
 	"github.com/kitevi/rfs/internal/rfs"
 )
 
@@ -74,8 +75,8 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 
 	var items []rfs.ExtractedItem
 	seen := map[int]bool{}
-	for _, anchor := range anchors(doc) {
-		number, link, ok := chapterRef(attr(anchor, "href"))
+	for _, anchor := range dom.Elements(doc, "a") {
+		number, link, ok := chapterRef(dom.Attr(anchor, "href"))
 		if !ok || seen[number] {
 			continue
 		}
@@ -221,31 +222,6 @@ func encodeCheckpoint(state checkpoint) (json.RawMessage, error) {
 	return encoded, nil
 }
 
-// anchors returns every anchor element in document order.
-func anchors(n *html.Node) []*html.Node {
-	var found []*html.Node
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
-		if node.Type == html.ElementNode && node.Data == "a" {
-			found = append(found, node)
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(n)
-	return found
-}
-
-func attr(n *html.Node, name string) string {
-	for _, a := range n.Attr {
-		if a.Key == name {
-			return a.Val
-		}
-	}
-	return ""
-}
-
 // chapterRef parses a chapter link into its number and canonical HTTPS URL.
 // Links that leave the TCB Scans host or that do not point at a main-series
 // chapter are rejected, so a page mixing series cannot smuggle in a wrong link.
@@ -285,7 +261,7 @@ func chapterText(anchor *html.Node, number int) (string, string, error) {
 		if child.Type != html.ElementNode || child.Data != "div" {
 			continue
 		}
-		if text := normalizeText(nodeText(child)); text != "" {
+		if text := dom.Collapse(dom.Text(child)); text != "" {
 			texts = append(texts, text)
 		}
 	}
@@ -319,19 +295,4 @@ func chapterTitle(heading, subtitle string) string {
 		return heading
 	}
 	return heading + " — " + subtitle
-}
-
-func normalizeText(text string) string {
-	return strings.Join(strings.Fields(text), " ")
-}
-
-func nodeText(n *html.Node) string {
-	if n.Type == html.TextNode {
-		return n.Data
-	}
-	var b strings.Builder
-	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		b.WriteString(nodeText(child))
-	}
-	return b.String()
 }

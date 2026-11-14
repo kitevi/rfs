@@ -9,6 +9,8 @@ import (
 	"unicode"
 
 	"golang.org/x/net/html"
+
+	"github.com/kitevi/rfs/internal/dom"
 )
 
 // embedded is one release from the page, in document order. title is set for
@@ -47,7 +49,7 @@ func embeddedReleases(doc *html.Node) []embedded {
 				return
 			case "em":
 				if artist != "" && !titled {
-					title := cleanName(textOf(node))
+					title := cleanName(dom.Text(node))
 					if title != "" {
 						titled = true
 						if slug, ok := proseSlug(artist, title); ok {
@@ -61,7 +63,7 @@ func embeddedReleases(doc *html.Node) []embedded {
 				}
 				return
 			case "iframe":
-				if rel, ok := embeddedRelease(attr(node, "src")); ok && !seen[rel.guid()] {
+				if rel, ok := embeddedRelease(dom.Attr(node, "src")); ok && !seen[rel.guid()] {
 					seen[rel.guid()] = true
 					found = append(found, embedded{release: rel, genre: genre})
 				}
@@ -82,18 +84,7 @@ func proseName(strong *html.Node) string {
 	if genreLabel(strong) != "" {
 		return ""
 	}
-	var label strings.Builder
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
-		if node.Type == html.TextNode {
-			label.WriteString(node.Data)
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(strong)
-	return strings.TrimSpace(label.String())
+	return strings.TrimSpace(dom.Text(strong))
 }
 
 // genreLabel reports the section a bold lead-in introduces. Sections are
@@ -264,21 +255,6 @@ func cleanName(text string) string {
 	return strings.Trim(strings.TrimSpace(text), " ,;:.")
 }
 
-func textOf(node *html.Node) string {
-	var b strings.Builder
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.TextNode {
-			b.WriteString(n.Data)
-		}
-		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(node)
-	return b.String()
-}
-
 func validYouTubeID(id string) bool {
 	if len(id) != 11 {
 		return false
@@ -299,15 +275,6 @@ func canonicalID(raw string) (string, error) {
 		return "", fmt.Errorf("not a positive id")
 	}
 	return strconv.FormatInt(id, 10), nil
-}
-
-func attr(node *html.Node, name string) string {
-	for _, a := range node.Attr {
-		if a.Key == name {
-			return a.Val
-		}
-	}
-	return ""
 }
 
 // description renders the genre a recommendation appeared under as plain text:

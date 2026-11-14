@@ -8,6 +8,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/kitevi/rfs/internal/dom"
 	"github.com/kitevi/rfs/internal/rfs"
 )
 
@@ -281,18 +282,12 @@ func trackFields(meta bandcampPlayer, id string) (artist, title string, ok bool)
 }
 
 // playerData returns the player metadata JSON.
-func playerData(node *html.Node) (string, bool) {
-	if node.Type == html.ElementNode {
-		if raw := attr(node, "data-player-data"); raw != "" {
-			return raw, true
-		}
+func playerData(doc *html.Node) (string, bool) {
+	node := dom.Find(doc, func(n *html.Node) bool { return dom.Attr(n, "data-player-data") != "" })
+	if node == nil {
+		return "", false
 	}
-	for child := node.FirstChild; child != nil; child = child.NextSibling {
-		if raw, ok := playerData(child); ok {
-			return raw, true
-		}
-	}
-	return "", false
+	return dom.Attr(node, "data-player-data"), true
 }
 
 func textValue(text *string) string {

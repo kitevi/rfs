@@ -26,6 +26,7 @@ import (
 	"golang.org/x/net/html"
 	"golang.org/x/net/html/atom"
 
+	"github.com/kitevi/rfs/internal/dom"
 	"github.com/kitevi/rfs/internal/rfs"
 )
 
@@ -82,11 +83,11 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 	var items []rfs.ExtractedItem
 	seen := make(map[string]bool)
 	for _, anchor := range anchors {
-		path, slug, ok := essayRef(attr(anchor, "href"))
+		path, slug, ok := essayRef(dom.Attr(anchor, "href"))
 		if !ok || seen[slug] {
 			continue
 		}
-		title := strings.TrimSpace(textContent(anchor))
+		title := strings.TrimSpace(dom.Text(anchor))
 		if title == "" {
 			continue
 		}
@@ -121,11 +122,11 @@ func (Flow) ItemDate(page rfs.Page, item rfs.ExtractedItem) (time.Time, error) {
 	if err != nil {
 		return time.Time{}, fmt.Errorf("coached: parse %s: %w", item.GUID, err)
 	}
-	for _, meta := range elementNodes(doc, "meta") {
-		if attr(meta, "property") != publishedProperty {
+	for _, meta := range dom.Elements(doc, "meta") {
+		if dom.Attr(meta, "property") != publishedProperty {
 			continue
 		}
-		value := strings.TrimSpace(attr(meta, "content"))
+		value := strings.TrimSpace(dom.Attr(meta, "content"))
 		for _, layout := range []string{time.DateOnly, time.RFC3339} {
 			if date, err := time.Parse(layout, value); err == nil {
 				return date.UTC(), nil
@@ -143,8 +144,8 @@ func (Flow) ItemDate(page rfs.Page, item rfs.ExtractedItem) (time.Time, error) {
 // the newsletter archive that follows the next heading — are left unread.
 func essaySectionAnchors(doc *html.Node) ([]*html.Node, error) {
 	var found []*html.Node
-	for _, block := range elementNodes(doc, "noscript") {
-		fragment, err := html.ParseFragment(strings.NewReader(textContent(block)), &html.Node{
+	for _, block := range dom.Elements(doc, "noscript") {
+		fragment, err := html.ParseFragment(strings.NewReader(dom.Text(block)), &html.Node{
 			Type:     html.ElementNode,
 			Data:     "body",
 			DataAtom: atom.Body,
@@ -169,7 +170,7 @@ func anchorsAfterEssayHeading(roots []*html.Node) []*html.Node {
 			if inSection {
 				return false
 			}
-			if strings.TrimSpace(textContent(node)) == essayHeading {
+			if strings.TrimSpace(dom.Text(node)) == essayHeading {
 				inSection = true
 			}
 		}
@@ -195,23 +196,6 @@ func isHeading(tag string) bool {
 	return len(tag) == 2 && tag[0] == 'h' && tag[1] >= '1' && tag[1] <= '6'
 }
 
-// elementNodes returns every element with the given tag name, in document
-// order.
-func elementNodes(n *html.Node, tag string) []*html.Node {
-	var found []*html.Node
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
-		if node.Type == html.ElementNode && node.Data == tag {
-			found = append(found, node)
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(n)
-	return found
-}
-
 // essayRef parses an essay link into its canonical path and slug. The slug
 // comes from the path, so an item's identity never depends on its title.
 func essayRef(href string) (string, string, bool) {
@@ -221,24 +205,4 @@ func essayRef(href string) (string, string, bool) {
 		return "", "", false
 	}
 	return trimmed, match[1], true
-}
-
-func attr(n *html.Node, name string) string {
-	for _, a := range n.Attr {
-		if a.Key == name {
-			return a.Val
-		}
-	}
-	return ""
-}
-
-func textContent(n *html.Node) string {
-	if n.Type == html.TextNode {
-		return n.Data
-	}
-	var b strings.Builder
-	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		b.WriteString(textContent(child))
-	}
-	return b.String()
 }

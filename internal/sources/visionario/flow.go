@@ -25,6 +25,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/kitevi/rfs/internal/dom"
 	"github.com/kitevi/rfs/internal/rfs"
 )
 
@@ -84,19 +85,19 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 
 	var items []rfs.ExtractedItem
 	seen := map[string]bool{}
-	for _, article := range elementsWithClass(doc, "type-films") {
+	for _, article := range dom.WithClass(doc, "type-films") {
 		anchor := titleAnchor(article)
 		if anchor == nil {
 			return nil, fmt.Errorf("visionario: film article has no title link")
 		}
-		slug, ok := filmSlug(attr(anchor, "href"))
+		slug, ok := filmSlug(dom.Attr(anchor, "href"))
 		if !ok {
-			return nil, fmt.Errorf("visionario: film article links to %q", attr(anchor, "href"))
+			return nil, fmt.Errorf("visionario: film article links to %q", dom.Attr(anchor, "href"))
 		}
 		if seen[slug] {
 			continue
 		}
-		title := collapse(textContent(anchor))
+		title := dom.Collapse(dom.Text(anchor))
 		if title == "" {
 			return nil, fmt.Errorf("visionario: film %s has no title", slug)
 		}
@@ -328,8 +329,8 @@ func classifyBadge(badge string) (string, error) {
 
 func badgeFrom(doc *html.Node) (string, error) {
 	var found string
-	for _, node := range elementsWithClass(doc, "primaVisione") {
-		text := strings.ToLower(collapse(textContent(node)))
+	for _, node := range dom.WithClass(doc, "primaVisione") {
+		text := strings.ToLower(dom.Collapse(dom.Text(node)))
 		if text == "" {
 			continue
 		}
@@ -346,8 +347,8 @@ func badgeFrom(doc *html.Node) (string, error) {
 
 func openingFrom(doc *html.Node) (string, error) {
 	var found string
-	for _, node := range elementsWithClass(doc, "inizio") {
-		text := collapse(textContent(node))
+	for _, node := range dom.WithClass(doc, "inizio") {
+		text := dom.Collapse(dom.Text(node))
 		if text == "" {
 			continue
 		}
@@ -365,8 +366,8 @@ func openingFrom(doc *html.Node) (string, error) {
 func hallsFrom(doc *html.Node) []string {
 	var halls []string
 	seen := map[string]bool{}
-	for _, node := range elementsWithClass(doc, "innerInfo") {
-		name := strings.TrimSpace(collapse(textContent(node)))
+	for _, node := range dom.WithClass(doc, "innerInfo") {
+		name := strings.TrimSpace(dom.Collapse(dom.Text(node)))
 		if name == "Cinema Centrale" {
 			name = "Centrale"
 		}
@@ -455,83 +456,12 @@ func filmSlug(href string) (string, bool) {
 }
 
 func titleAnchor(article *html.Node) *html.Node {
-	for _, heading := range elementsWithClass(article, "entry-title") {
-		if anchor := firstChildAnchor(heading); anchor != nil {
-			return anchor
+	for _, heading := range dom.WithClass(article, "entry-title") {
+		if anchors := dom.Elements(heading, "a"); len(anchors) > 0 {
+			return anchors[0]
 		}
 	}
 	return nil
-}
-
-func firstChildAnchor(root *html.Node) *html.Node {
-	var found *html.Node
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
-		if found != nil {
-			return
-		}
-		if node.Type == html.ElementNode && node.Data == "a" {
-			found = node
-			return
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(root)
-	return found
-}
-
-func elementsWithClass(root *html.Node, class string) []*html.Node {
-	var found []*html.Node
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
-		if node.Type == html.ElementNode && hasClass(node, class) {
-			found = append(found, node)
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(root)
-	return found
-}
-
-func hasClass(node *html.Node, class string) bool {
-	for _, token := range strings.Fields(attr(node, "class")) {
-		if token == class {
-			return true
-		}
-	}
-	return false
-}
-
-func attr(node *html.Node, name string) string {
-	for _, attribute := range node.Attr {
-		if attribute.Key == name {
-			return attribute.Val
-		}
-	}
-	return ""
-}
-
-func textContent(node *html.Node) string {
-	var builder strings.Builder
-	var walk func(*html.Node)
-	walk = func(current *html.Node) {
-		if current.Type == html.TextNode {
-			builder.WriteString(current.Data)
-		}
-		for child := current.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(node)
-	return builder.String()
-}
-
-func collapse(text string) string {
-	return strings.Join(strings.Fields(text), " ")
 }
 
 func setOf(slugs []string) map[string]bool {

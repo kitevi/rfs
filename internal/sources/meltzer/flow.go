@@ -9,6 +9,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/kitevi/rfs/internal/dom"
 	"github.com/kitevi/rfs/internal/rfs"
 )
 
@@ -65,7 +66,7 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 
 // extractTable parses a single decade table into extracted items.
 func extractTable(table *html.Node) []rfs.ExtractedItem {
-	rows := findElements(table, "tr")
+	rows := dom.Elements(table, "tr")
 	if len(rows) < 2 {
 		return nil
 	}
@@ -185,17 +186,8 @@ func alignCells(cells []*html.Node, columnCount int, spans map[int]carriedCell) 
 }
 
 func intAttr(n *html.Node, name string) int {
-	for _, attr := range n.Attr {
-		if attr.Key != name {
-			continue
-		}
-		value, err := strconv.Atoi(attr.Val)
-		if err != nil {
-			return 0
-		}
-		return value
-	}
-	return 0
+	value, _ := strconv.Atoi(dom.Attr(n, name))
+	return value
 }
 
 func hasHeaders(headers map[string]int, names ...string) bool {
@@ -248,21 +240,6 @@ func slug(value string) string {
 	return strings.Trim(b.String(), "-")
 }
 
-func findElements(root *html.Node, name string) []*html.Node {
-	var out []*html.Node
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode && n.Data == name {
-			out = append(out, n)
-		}
-		for child := n.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(root)
-	return out
-}
-
 func childElements(root *html.Node, name string) []*html.Node {
 	var out []*html.Node
 	for child := root.FirstChild; child != nil; child = child.NextSibling {
@@ -277,7 +254,7 @@ func textContent(root *html.Node) string {
 	var parts []string
 	var walk func(*html.Node)
 	walk = func(n *html.Node) {
-		if n.Type == html.ElementNode && (n.Data == "sup" || hasClass(n, "reference")) {
+		if n.Type == html.ElementNode && (n.Data == "sup" || dom.HasClass(n, "reference")) {
 			return
 		}
 		if n.Type == html.TextNode {
@@ -297,18 +274,4 @@ func textContent(root *html.Node) string {
 	s = strings.ReplaceAll(s, "( ", "(")
 	s = strings.ReplaceAll(s, " )", ")")
 	return s
-}
-
-func hasClass(n *html.Node, class string) bool {
-	for _, attr := range n.Attr {
-		if attr.Key != "class" {
-			continue
-		}
-		for _, part := range strings.Fields(attr.Val) {
-			if part == class {
-				return true
-			}
-		}
-	}
-	return false
 }

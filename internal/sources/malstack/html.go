@@ -7,6 +7,8 @@ import (
 	"strings"
 
 	"golang.org/x/net/html"
+
+	"github.com/kitevi/rfs/internal/dom"
 )
 
 const comparisonVersion = 1
@@ -40,20 +42,20 @@ func parseStack(doc *html.Node, stackID string) (stack, error) {
 	if err != nil {
 		return stack{}, err
 	}
-	detail := findNode(doc, func(n *html.Node) bool {
+	detail := dom.Find(doc, func(n *html.Node) bool {
 		return n.Type == html.ElementNode && n.Data == "div" &&
-			hasClass(n, "content-left") && hasClass(n, "stacks-detail")
+			dom.HasClass(n, "content-left") && dom.HasClass(n, "stacks-detail")
 	})
 	if detail == nil {
 		return stack{}, fmt.Errorf("unrecognized stack page: missing detail container")
 	}
-	if pagination := findNode(detail, func(n *html.Node) bool {
-		return n.Type == html.ElementNode && (hasClass(n, "pagination") || attr(n, "rel") == "next")
+	if pagination := dom.Find(detail, func(n *html.Node) bool {
+		return n.Type == html.ElementNode && (dom.HasClass(n, "pagination") || dom.Attr(n, "rel") == "next")
 	}); pagination != nil {
 		return stack{}, fmt.Errorf("unrecognized stack page: paginated collection")
 	}
-	list := findNode(detail, func(n *html.Node) bool {
-		return n.Type == html.ElementNode && n.Data == "div" && hasClass(n, "list-anime-list")
+	list := dom.Find(detail, func(n *html.Node) bool {
+		return n.Type == html.ElementNode && n.Data == "div" && dom.HasClass(n, "list-anime-list")
 	})
 	if list == nil {
 		return stack{}, fmt.Errorf("unrecognized stack page: missing anime list")
@@ -61,7 +63,7 @@ func parseStack(doc *html.Node, stackID string) (stack, error) {
 	var result stack
 	seen := map[string]bool{}
 	for card := list.FirstChild; card != nil; card = card.NextSibling {
-		if card.Type != html.ElementNode || card.Data != "div" || !hasClass(card, "seasonal-anime") {
+		if card.Type != html.ElementNode || card.Data != "div" || !dom.HasClass(card, "seasonal-anime") {
 			continue
 		}
 		entry, err := parseAnime(card)
@@ -83,13 +85,13 @@ func parseStack(doc *html.Node, stackID string) (stack, error) {
 // isStackPage verifies the page's own canonical URL metadata names the watched
 // stack. A login or challenge page has no og:url and is rejected here.
 func isStackPage(doc *html.Node, stackID string) bool {
-	meta := findNode(doc, func(n *html.Node) bool {
-		return n.Type == html.ElementNode && n.Data == "meta" && attr(n, "property") == "og:url"
+	meta := dom.Find(doc, func(n *html.Node) bool {
+		return n.Type == html.ElementNode && n.Data == "meta" && dom.Attr(n, "property") == "og:url"
 	})
 	if meta == nil {
 		return false
 	}
-	parsed, err := url.Parse(strings.TrimSpace(attr(meta, "content")))
+	parsed, err := url.Parse(strings.TrimSpace(dom.Attr(meta, "content")))
 	if err != nil {
 		return false
 	}
@@ -101,13 +103,13 @@ func isStackPage(doc *html.Node, stackID string) bool {
 // "N Entries" earlier. A wrong count here only rejects a valid page (fail
 // closed); it can never publish changes.
 func declaredCount(doc *html.Node) (int, error) {
-	meta := findNode(doc, func(n *html.Node) bool {
-		return n.Type == html.ElementNode && n.Data == "meta" && attr(n, "property") == "og:description"
+	meta := dom.Find(doc, func(n *html.Node) bool {
+		return n.Type == html.ElementNode && n.Data == "meta" && dom.Attr(n, "property") == "og:description"
 	})
 	if meta == nil {
 		return 0, fmt.Errorf("unrecognized stack page: missing description metadata")
 	}
-	matches := entryCountPattern.FindAllStringSubmatch(attr(meta, "content"), -1)
+	matches := entryCountPattern.FindAllStringSubmatch(dom.Attr(meta, "content"), -1)
 	if len(matches) == 0 {
 		return 0, fmt.Errorf("unrecognized stack page: missing entry count")
 	}
@@ -119,17 +121,17 @@ func declaredCount(doc *html.Node) (int, error) {
 }
 
 func parseAnime(card *html.Node) (animeEntry, error) {
-	link := findNode(card, func(n *html.Node) bool {
-		return n.Type == html.ElementNode && n.Data == "a" && hasClass(n, "link-title")
+	link := dom.Find(card, func(n *html.Node) bool {
+		return n.Type == html.ElementNode && n.Data == "a" && dom.HasClass(n, "link-title")
 	})
 	if link == nil {
 		return animeEntry{}, fmt.Errorf("invalid stack entry: missing title link")
 	}
-	id, ok := animeID(attr(link, "href"))
+	id, ok := animeID(dom.Attr(link, "href"))
 	if !ok {
 		return animeEntry{}, fmt.Errorf("invalid stack entry: unrecognized anime link")
 	}
-	title := strings.TrimSpace(nodeText(link))
+	title := strings.TrimSpace(dom.Text(link))
 	if title == "" {
 		return animeEntry{}, fmt.Errorf("invalid stack entry: empty title for anime %s", id)
 	}
@@ -140,58 +142,13 @@ func parseAnime(card *html.Node) (animeEntry, error) {
 	return animeEntry{id: id, title: title, notes: notes}, nil
 }
 
-func hasClass(n *html.Node, class string) bool {
-	for _, field := range strings.Fields(attr(n, "class")) {
-		if field == class {
-			return true
-		}
-	}
-	return false
-}
-
-func attr(n *html.Node, key string) string {
-	for _, a := range n.Attr {
-		if a.Key == key {
-			return a.Val
-		}
-	}
-	return ""
-}
-
-func findNode(n *html.Node, match func(*html.Node) bool) *html.Node {
-	if match(n) {
-		return n
-	}
-	for child := n.FirstChild; child != nil; child = child.NextSibling {
-		if found := findNode(child, match); found != nil {
-			return found
-		}
-	}
-	return nil
-}
-
-func nodeText(n *html.Node) string {
-	var b strings.Builder
-	var walk func(*html.Node)
-	walk = func(n *html.Node) {
-		if n.Type == html.TextNode {
-			b.WriteString(n.Data)
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			walk(c)
-		}
-	}
-	walk(n)
-	return b.String()
-}
-
 // noteLines reads the curator's notes from the card's explicit wrapper. A
 // card without one is rejected rather than treated as an emptied note: an
 // unrecognized layout must not look like a removed note. Only an explicit,
 // empty wrapper canonicalizes to no lines.
 func noteLines(card *html.Node) ([]string, error) {
-	intro := findNode(card, func(n *html.Node) bool {
-		return n.Type == html.ElementNode && n.Data == "div" && hasClass(n, "intro")
+	intro := dom.Find(card, func(n *html.Node) bool {
+		return n.Type == html.ElementNode && n.Data == "div" && dom.HasClass(n, "intro")
 	})
 	if intro == nil {
 		return nil, fmt.Errorf("invalid stack entry: missing curator notes")
@@ -239,7 +196,7 @@ func canonicalLines(root *html.Node) []string {
 			walk(c)
 		}
 		if n.Type == html.ElementNode {
-			if href := safeHref(attr(n, "href")); href != "" {
+			if href := safeHref(dom.Attr(n, "href")); href != "" {
 				b.WriteString(" (" + href + ")")
 			}
 			if blockElements[n.Data] {

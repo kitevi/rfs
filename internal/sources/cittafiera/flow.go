@@ -20,6 +20,7 @@ import (
 
 	"golang.org/x/net/html"
 
+	"github.com/kitevi/rfs/internal/dom"
 	"github.com/kitevi/rfs/internal/rfs"
 )
 
@@ -77,12 +78,12 @@ func (Flow) Extract(page rfs.Page) ([]rfs.ExtractedItem, error) {
 
 	var items []rfs.ExtractedItem
 	seen := map[string]bool{}
-	for _, anchor := range anchors(doc) {
-		id, ok := filmID(attr(anchor, "href"))
+	for _, anchor := range dom.Elements(doc, "a") {
+		id, ok := filmID(dom.Attr(anchor, "href"))
 		if !ok || seen[id] {
 			continue
 		}
-		title := collapse(textWithoutClass(anchor, "properties"))
+		title := dom.Collapse(textWithoutClass(anchor, "properties"))
 		if title == "" || isMoreLink(title) {
 			continue
 		}
@@ -300,8 +301,8 @@ func readFilmPage(page rfs.Page) (filmNote, error) {
 func screeningDays(doc *html.Node) ([]time.Time, error) {
 	seen := map[string]bool{}
 	var days []time.Time
-	for _, anchor := range anchors(doc) {
-		parsed, err := url.Parse(strings.TrimSpace(attr(anchor, "href")))
+	for _, anchor := range dom.Elements(doc, "a") {
+		parsed, err := url.Parse(strings.TrimSpace(dom.Attr(anchor, "href")))
 		if err != nil {
 			continue
 		}
@@ -329,14 +330,14 @@ func screeningDays(doc *html.Node) ([]time.Time, error) {
 }
 
 func labeled(doc *html.Node, label string) string {
-	for _, strong := range elements(doc, "strong") {
-		if collapse(textContent(strong)) != label {
+	for _, strong := range dom.Elements(doc, "strong") {
+		if dom.Collapse(dom.Text(strong)) != label {
 			continue
 		}
 		if strong.Parent == nil {
 			return ""
 		}
-		text := strings.TrimPrefix(collapse(textContent(strong.Parent)), label)
+		text := strings.TrimPrefix(dom.Collapse(dom.Text(strong.Parent)), label)
 		return strings.TrimSpace(text)
 	}
 	return ""
@@ -437,30 +438,11 @@ func isMoreLink(title string) bool {
 	}
 }
 
-func anchors(root *html.Node) []*html.Node {
-	return elements(root, "a")
-}
-
-func elements(root *html.Node, tag string) []*html.Node {
-	var found []*html.Node
-	var walk func(*html.Node)
-	walk = func(node *html.Node) {
-		if node.Type == html.ElementNode && node.Data == tag {
-			found = append(found, node)
-		}
-		for child := node.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(root)
-	return found
-}
-
 func textWithoutClass(node *html.Node, class string) string {
 	var builder strings.Builder
 	var walk func(*html.Node)
 	walk = func(current *html.Node) {
-		if current.Type == html.ElementNode && hasClass(current, class) {
+		if current.Type == html.ElementNode && dom.HasClass(current, class) {
 			return
 		}
 		if current.Type == html.TextNode {
@@ -472,43 +454,6 @@ func textWithoutClass(node *html.Node, class string) string {
 	}
 	walk(node)
 	return builder.String()
-}
-
-func hasClass(node *html.Node, class string) bool {
-	for _, token := range strings.Fields(attr(node, "class")) {
-		if token == class {
-			return true
-		}
-	}
-	return false
-}
-
-func attr(node *html.Node, name string) string {
-	for _, attribute := range node.Attr {
-		if attribute.Key == name {
-			return attribute.Val
-		}
-	}
-	return ""
-}
-
-func textContent(node *html.Node) string {
-	var builder strings.Builder
-	var walk func(*html.Node)
-	walk = func(current *html.Node) {
-		if current.Type == html.TextNode {
-			builder.WriteString(current.Data)
-		}
-		for child := current.FirstChild; child != nil; child = child.NextSibling {
-			walk(child)
-		}
-	}
-	walk(node)
-	return builder.String()
-}
-
-func collapse(text string) string {
-	return strings.Join(strings.Fields(text), " ")
 }
 
 func sortedIDs(set map[string]bool) []string {
