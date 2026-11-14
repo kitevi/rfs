@@ -166,22 +166,22 @@ type fakeReleaseClient struct {
 	latest ReleaseCandidate
 	found  bool
 	err    error
-	assets map[int64][]byte
-	calls  []int64
+	assets map[string][]byte
+	calls  []string
 }
 
 func (f *fakeReleaseClient) Latest(context.Context) (ReleaseCandidate, bool, error) {
 	return f.latest, f.found, f.err
 }
 
-func (f *fakeReleaseClient) Download(_ context.Context, _ ReleaseCandidate, assetID int64) ([]byte, error) {
-	f.calls = append(f.calls, assetID)
+func (f *fakeReleaseClient) Download(_ context.Context, url string) ([]byte, error) {
+	f.calls = append(f.calls, url)
 	if f.err != nil {
 		return nil, f.err
 	}
-	asset, ok := f.assets[assetID]
+	asset, ok := f.assets[url]
 	if !ok {
-		return nil, fmt.Errorf("fake: no asset for %d", assetID)
+		return nil, fmt.Errorf("fake: no asset for %s", url)
 	}
 	return asset, nil
 }
@@ -281,15 +281,15 @@ func TestUpdaterCheckAppliesNewerRelease(t *testing.T) {
 	checksums := hex.EncodeToString(sum[:]) + "  " + archiveName + "\n"
 
 	candidate := ReleaseCandidate{
-		Version:     "0.2.0",
-		ArchiveName: archiveName,
-		ArchiveID:   1,
-		ChecksumsID: 2,
+		Version:      "0.2.0",
+		ArchiveName:  archiveName,
+		ArchiveURL:   "archive",
+		ChecksumsURL: "checksums",
 	}
 	client := &fakeReleaseClient{
 		latest: candidate,
 		found:  true,
-		assets: map[int64][]byte{1: archive, 2: []byte(checksums)},
+		assets: map[string][]byte{"archive": archive, "checksums": []byte(checksums)},
 	}
 	swapper := &fakeSwapper{}
 	u := Updater{Current: "0.1.0", Client: client, Swapper: swapper}
@@ -307,7 +307,7 @@ func TestUpdaterCheckAppliesNewerRelease(t *testing.T) {
 	if !bytes.Equal(swapper.got, binary) {
 		t.Fatalf("swapper got %q, want the extracted binary %q", swapper.got, binary)
 	}
-	if len(client.calls) != 2 || client.calls[0] != 2 || client.calls[1] != 1 {
+	if len(client.calls) != 2 || client.calls[0] != "checksums" || client.calls[1] != "archive" {
 		t.Fatalf("download calls = %v, want checksums then archive", client.calls)
 	}
 
@@ -340,7 +340,7 @@ func TestUpdaterCheckAppliesNewerRelease(t *testing.T) {
 	badClient := &fakeReleaseClient{
 		latest: candidate,
 		found:  true,
-		assets: map[int64][]byte{1: tampered, 2: []byte(checksums)},
+		assets: map[string][]byte{"archive": tampered, "checksums": []byte(checksums)},
 	}
 	badSwapper := &fakeSwapper{}
 	badUpdater := Updater{Current: "0.1.0", Client: badClient, Swapper: badSwapper}

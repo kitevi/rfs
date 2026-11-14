@@ -48,6 +48,9 @@ const defaultFetchTimeout = 30 * time.Second
 
 var defaultHTTPClient = &http.Client{Timeout: defaultFetchTimeout}
 
+// userAgent identifies rfs to every upstream it contacts.
+const userAgent = "rfs/0.1 (+https://github.com/kitevi/rfs)"
+
 type HTTPFetcher struct {
 	client *http.Client
 }
@@ -79,7 +82,7 @@ func (f HTTPFetcher) FetchJSON(ctx context.Context, url string, body []byte) (Fe
 }
 
 func (f HTTPFetcher) fetch(req *http.Request, cache FetchCache) (FetchResult, error) {
-	req.Header.Set("User-Agent", "rfs/0.1 (+https://github.com/kitevi/rfs)")
+	req.Header.Set("User-Agent", userAgent)
 	if cache.ETag != "" {
 		req.Header.Set("If-None-Match", cache.ETag)
 	}

@@ -71,24 +71,20 @@ func (r *sizeLimitedReader) Read(p []byte) (int, error) {
 }
 
 // ReleaseCandidate is the platform-specific archive selected by the release
-// adapter. Its IDs are opaque to rfs and are used only to download the archive
-// and checksums asset through the provider.
+// adapter, with the URLs of the archive and its checksums file.
 type ReleaseCandidate struct {
-	Version     string
-	ArchiveName string
-	ArchiveID   int64
-	ChecksumsID int64
-	// providerRelease is owned by the ReleaseClient implementation. It lets the
-	// adapter retain provider-specific state without leaking it into Updater.
-	providerRelease any
+	Version      string
+	ArchiveName  string
+	ArchiveURL   string
+	ChecksumsURL string
 }
 
 // ReleaseClient is the seam between the self-update workflow and its release
-// provider. The production implementation is backed by go-selfupdate; tests
+// provider. The production implementation reads GitHub's releases API; tests
 // can exercise the workflow without making network requests.
 type ReleaseClient interface {
 	Latest(context.Context) (ReleaseCandidate, bool, error)
-	Download(context.Context, ReleaseCandidate, int64) ([]byte, error)
+	Download(ctx context.Context, url string) ([]byte, error)
 }
 
 // BinarySwapper atomically replaces the running binary with newBinary. The
@@ -133,15 +129,15 @@ func (u Updater) Check(ctx context.Context) (UpdateCheckResult, error) {
 	if !isNewerVersion(u.Current, candidate.Version) {
 		return result, nil
 	}
-	if candidate.ArchiveName == "" || candidate.ArchiveID <= 0 || candidate.ChecksumsID <= 0 {
+	if candidate.ArchiveURL == "" || candidate.ChecksumsURL == "" {
 		return result, fmt.Errorf("self-update: release %s has incomplete asset metadata", candidate.Version)
 	}
 
-	checksums, err := u.Client.Download(ctx, candidate, candidate.ChecksumsID)
+	checksums, err := u.Client.Download(ctx, candidate.ChecksumsURL)
 	if err != nil {
 		return result, fmt.Errorf("self-update: download checksums: %w", err)
 	}
-	archive, err := u.Client.Download(ctx, candidate, candidate.ArchiveID)
+	archive, err := u.Client.Download(ctx, candidate.ArchiveURL)
 	if err != nil {
 		return result, fmt.Errorf("self-update: download archive: %w", err)
 	}
@@ -202,17 +198,13 @@ type UpdateMonitor struct {
 // NewUpdateMonitor creates the production self-update monitor. It hides the
 // GitHub, platform, downloader, and filesystem adapters from callers.
 func NewUpdateMonitor(current string, config UpdateMonitorConfig) (*UpdateMonitor, error) {
-	client, err := newSelfUpdateClient()
-	if err != nil {
-		return nil, err
-	}
 	swapper, err := NewFileSwapper()
 	if err != nil {
 		return nil, err
 	}
 	monitor := newUpdateMonitor(Updater{
 		Current: current,
-		Client:  client,
+		Client:  newSelfUpdateClient(),
 		Swapper: swapper,
 	}, config)
 	monitor.reexecPath = swapper.Path()
