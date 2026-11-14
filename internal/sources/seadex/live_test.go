@@ -44,16 +44,11 @@ func TestLiveSeaDex(t *testing.T) {
 		}
 		t.Logf("baseline saved: %d anime; an empty initial feed is expected", len(state.Items))
 		flow := source.Flow.(rfs.EnrichedChangeFlow)
-		url, body, err := flow.EnrichmentRequest(state.Items[:1])
+		url, err := flow.EnrichmentURL(state.Items[:1])
 		if err != nil {
 			t.Fatal(err)
 		}
-		var metadata rfs.FetchResult
-		if body == nil {
-			metadata, err = p.Fetcher.Fetch(ctx, url, rfs.FetchCache{})
-		} else {
-			metadata, err = p.Fetcher.(rfs.JSONFetcher).FetchJSON(ctx, url, body)
-		}
+		metadata, err := p.Fetcher.Fetch(ctx, url, rfs.FetchCache{})
 		if err != nil {
 			t.Fatal(err)
 		}

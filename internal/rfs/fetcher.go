@@ -1,7 +1,6 @@
 package rfs
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -68,17 +67,6 @@ func (f HTTPFetcher) Fetch(ctx context.Context, url string, cache FetchCache) (F
 		return FetchResult{}, err
 	}
 	return f.fetch(req, cache)
-}
-
-// FetchJSON posts a read-only JSON query through the same HTTP client and policy.
-func (f HTTPFetcher) FetchJSON(ctx context.Context, url string, body []byte) (FetchResult, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return FetchResult{}, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	return f.fetch(req, FetchCache{})
 }
 
 func (f HTTPFetcher) fetch(req *http.Request, cache FetchCache) (FetchResult, error) {

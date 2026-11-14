@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"time"
 )
 
 // ChangeFlow compares complete observations. Extract returns stable entity GUIDs;
@@ -27,13 +26,6 @@ type ChangeState struct {
 type ChangeStore interface {
 	LoadChangeState(context.Context, string) (ChangeState, error)
 	SaveChanges(context.Context, string, ChangeState, []Item, FetchCache) error
-}
-
-// comparesChanges reports whether a Flow's entries are derived by comparison
-// instead of being projected from the page every poll.
-func comparesChanges(flow Flow) bool {
-	_, ok := flow.(ChangeFlow)
-	return ok
 }
 
 func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow, current []ExtractedItem, cache FetchCache) (PollResult, error) {
@@ -65,7 +57,9 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 	}
 	items := make([]Item, 0, len(changes))
 	for _, change := range changes {
-		items = append(items, Item{GUID: fmt.Sprintf("%s:%d:%s", source.ID, revision, change.GUID), Title: change.Title, Link: change.Link, Description: change.Description, Metadata: change.Metadata, PubDate: changeTime(change, p.now())})
+		item := change.item(change.pubDateOr(p.now()))
+		item.GUID = fmt.Sprintf("%s:%d:%s", source.ID, revision, change.GUID)
+		items = append(items, item)
 	}
 	cache.ExtractVersion = flow.Version()
 	err = store.SaveChanges(commitContext(ctx), source.ID, ChangeState{Items: current, Version: flow.Version(), Revision: revision, Initialized: true}, items, cache)
@@ -76,15 +70,6 @@ func (p Poller) pollChanges(ctx context.Context, source Source, flow ChangeFlow,
 		return PollResult{Status: PollUnchanged}, nil
 	}
 	return PollResult{Status: PollUpdated}, nil
-}
-
-// changeTime picks the emitted timestamp: the Flow's own publication time when
-// it reported one, otherwise the observation time the poller would use anyway.
-func changeTime(change ExtractedItem, observed time.Time) time.Time {
-	if change.PubDate != nil {
-		return *change.PubDate
-	}
-	return observed
 }
 
 func (s *SQLiteStore) LoadChangeState(ctx context.Context, sourceID string) (ChangeState, error) {

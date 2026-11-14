@@ -11,9 +11,6 @@ import (
 	"github.com/kitevi/rfs/internal/sources/seadex"
 )
 
-// No JSONFetcher: cached metadata must go through the standard GET path.
-type getOnly struct{ rfs.PageFetcher }
-
 func TestCachedMetadataPublishesDiffWithoutAniListPOST(t *testing.T) {
 	body := before
 	calls := 0
@@ -40,7 +37,7 @@ func TestCachedMetadataPublishesDiffWithoutAniListPOST(t *testing.T) {
 	}
 	defer store.Close()
 	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
-	p := rfs.Poller{Fetcher: getOnly{rfs.NewHTTPFetcher(server.Client())}, Store: store}
+	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
 	}

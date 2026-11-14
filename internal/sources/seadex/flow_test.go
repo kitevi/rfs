@@ -2,7 +2,6 @@ package seadex_test
 
 import (
 	"context"
-	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"net/http"
@@ -192,13 +191,10 @@ func TestUpdatesIncludeAnimeTitleCoverAndSafeHTML(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/metadata" {
 			calls++
-			var request struct {
-				Query string `json:"query"`
+			if r.Method != "GET" || r.URL.Query().Get("filter") != "alID=99698" {
+				t.Errorf("expected one metadata GET for the changed anime, got %s %s", r.Method, r.URL.RawQuery)
 			}
-			if r.Method != "POST" || json.NewDecoder(r.Body).Decode(&request) != nil || !strings.Contains(request.Query, "99698") {
-				t.Error("expected AniList JSON query for changed anime")
-			}
-			w.Write([]byte(`{"data":{"Page":{"media":[{"id":99698,"title":{"english":"King's Game","romaji":"Ousama Game"},"coverImage":{"large":"https://example.org/cover.jpg"}}]}}}`))
+			w.Write([]byte(`{"items":[{"alID":99698,"title_english":"King's Game","title_userPreferred":"Ousama Game","coverImage_medium":"https://example.org/cover.jpg"}]}`))
 			return
 		}
 		w.Write([]byte(body))
@@ -209,7 +205,7 @@ func TestUpdatesIncludeAnimeTitleCoverAndSafeHTML(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	source := rfs.Source{ID: "seadex", URL: server.URL, Meta: rfs.SourceMeta{ItemDescriptionsHTML: true}, Flow: seadex.Flow{MetadataURL: server.URL + "/metadata"}}
+	source := rfs.Source{ID: "seadex", URL: server.URL, Meta: rfs.SourceMeta{ItemDescriptionsHTML: true}, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
@@ -345,7 +341,7 @@ func TestMetadataThrottlePreservesPendingChangeAndRetryAfter(t *testing.T) {
 				w.WriteHeader(429)
 				return
 			}
-			w.Write([]byte(`{"data":{"Page":{"media":[{"id":99698,"title":{"english":"King's Game"}}]}}}`))
+			w.Write([]byte(`{"items":[{"alID":99698,"title_english":"King's Game"}]}`))
 			return
 		}
 		w.Write([]byte(body))
@@ -356,7 +352,7 @@ func TestMetadataThrottlePreservesPendingChangeAndRetryAfter(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{MetadataURL: server.URL + "/metadata"}}
+	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)
@@ -383,7 +379,7 @@ func TestUnavailableCoverDoesNotBlockTextUpdate(t *testing.T) {
 	body := before
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/metadata" {
-			w.Write([]byte(`{"errors":[{"message":"image unavailable","path":["Page","media",0,"coverImage"]}],"data":{"Page":{"media":[{"id":99698,"title":{"english":"King's Game"},"coverImage":null}]}}}`))
+			w.Write([]byte(`{"items":[{"alID":99698,"title_english":"King's Game","coverImage_medium":""}]}`))
 			return
 		}
 		w.Write([]byte(body))
@@ -394,7 +390,7 @@ func TestUnavailableCoverDoesNotBlockTextUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{MetadataURL: server.URL + "/metadata"}}
+	source := rfs.Source{ID: "seadex", URL: server.URL, Flow: seadex.Flow{CachedMetadataURL: server.URL + "/metadata"}}
 	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(server.Client()), Store: store}
 	if _, err := p.Poll(context.Background(), source); err != nil {
 		t.Fatal(err)

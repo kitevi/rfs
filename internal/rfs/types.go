@@ -101,3 +101,17 @@ type ExtractedItem struct {
 	// do not observe one leave it zero (treated as immature while live).
 	Replies int
 }
+
+// item is the Item rfs stores for an extracted item, dated pubDate.
+func (e ExtractedItem) item(pubDate time.Time) Item {
+	return Item{GUID: e.GUID, Title: e.Title, Link: e.Link, Description: e.Description, Metadata: e.Metadata, PubDate: pubDate, Replies: e.Replies}
+}
+
+// pubDateOr is the Flow's own publication time when it reported one, otherwise
+// the observation time the poller would use anyway.
+func (e ExtractedItem) pubDateOr(observed time.Time) time.Time {
+	if e.PubDate != nil {
+		return *e.PubDate
+	}
+	return observed
+}

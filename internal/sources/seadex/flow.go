@@ -17,10 +17,9 @@ const (
 	ExtractVersion = 2
 )
 
-// CachedMetadataURL selects SeaDex-hosted titles and covers. MetadataURL is
-// an optional direct GraphQL alternative. Both empty leaves AniList-ID titles.
+// Flow watches SeaDex's recommendations. CachedMetadataURL selects SeaDex-hosted
+// titles and covers; empty leaves AniList-ID titles.
 type Flow struct {
-	MetadataURL       string
 	CachedMetadataURL string
 }
 

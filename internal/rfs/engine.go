@@ -34,13 +34,28 @@ type Poller struct {
 	SecondaryFetch func(context.Context, string) error
 }
 
-// beforeSecondaryFetch applies the caller's spacing guard to one follow-up
-// request, or does nothing when no guard is configured.
-func (p Poller) beforeSecondaryFetch(ctx context.Context, url string) error {
-	if p.SecondaryFetch == nil {
-		return nil
+// fetchFollowUp fetches one follow-up page of a poll (a further collection
+// page, an identity page, a metadata query, an item page) after the caller's
+// spacing guard, when one is configured. what names the page in the error when
+// it is unavailable. Throttling comes back as a fetchThrottle, so Retry-After
+// reaches the poll gate just as it does for the initial fetch.
+func (p Poller) fetchFollowUp(ctx context.Context, url, what string) (Page, error) {
+	if p.SecondaryFetch != nil {
+		if err := p.SecondaryFetch(ctx, url); err != nil {
+			return nil, err
+		}
 	}
-	return p.SecondaryFetch(ctx, url)
+	result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+	if err != nil {
+		return nil, err
+	}
+	switch result.Status {
+	case FetchModified:
+		return result.Page, nil
+	case FetchThrottled:
+		return nil, &fetchThrottle{result.RetryAfter}
+	}
+	return nil, fmt.Errorf("%s unavailable (status %d)", what, result.Status)
 }
 
 type PollStatus int
@@ -163,22 +178,10 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 			}
 			pubDate = seenAt
 		}
-		items = append(items, Item{
-			GUID:        item.GUID,
-			Title:       item.Title,
-			Link:        item.Link,
-			Description: item.Description,
-			Metadata:    item.Metadata,
-			PubDate:     pubDate,
-			Replies:     item.Replies,
-		})
+		items = append(items, item.item(pubDate))
 	}
 
 	if source.History != nil {
-		keepStored := source.History.StoredLimit
-		if keepStored <= 0 {
-			keepStored = 11
-		}
 		liveGUIDs := make([]string, 0, len(items))
 		for _, item := range items {
 			liveGUIDs = append(liveGUIDs, item.GUID)
@@ -200,7 +203,7 @@ func (p Poller) Poll(ctx context.Context, source Source) (PollResult, error) {
 			}
 		}
 		savedCache.ExtractVersion = source.Flow.Version()
-		if err := p.Store.CommitHistory(commitContext(ctx), source.ID, items, liveGUIDs, keepStored, savedCache, rebuild); err != nil {
+		if err := p.Store.CommitHistory(commitContext(ctx), source.ID, items, liveGUIDs, source.History.StoredLimit, savedCache, rebuild); err != nil {
 			return PollResult{}, err
 		}
 		return PollResult{Status: PollUpdated}, nil

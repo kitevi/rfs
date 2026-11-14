@@ -81,20 +81,11 @@ func (p Poller) fetchItemDate(ctx context.Context, flow DatedItemFlow, item Extr
 	if err != nil {
 		return time.Time{}, err
 	}
-	if err := p.beforeSecondaryFetch(ctx, url); err != nil {
-		return time.Time{}, err
-	}
-	result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+	page, err := p.fetchFollowUp(ctx, url, "item page")
 	if err != nil {
 		return time.Time{}, err
 	}
-	if result.Status == FetchThrottled {
-		return time.Time{}, &fetchThrottle{result.RetryAfter}
-	}
-	if result.Status != FetchModified {
-		return time.Time{}, fmt.Errorf("item page unavailable (status %d)", result.Status)
-	}
-	return flow.ItemDate(result.Page, item)
+	return flow.ItemDate(page, item)
 }
 
 func (s *SQLiteStore) LoadItemDate(ctx context.Context, sourceID, guid string) (time.Time, bool, error) {

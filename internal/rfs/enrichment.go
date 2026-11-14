@@ -5,18 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"slices"
 )
 
-// EnrichedChangeFlow describes optional metadata queries for emitted changes.
-// rfs performs the IO; the Flow constructs queries and decodes responses.
-// A nil request body selects GET; a non-nil body selects a JSON POST.
+// EnrichedChangeFlow describes an optional metadata query for a batch of
+// emitted changes. rfs performs the GET; the Flow builds the URL and decodes
+// the response. An empty URL leaves the batch as it is.
 type EnrichedChangeFlow interface {
 	ChangeFlow
-	EnrichmentRequest([]ExtractedItem) (string, []byte, error)
+	EnrichmentURL([]ExtractedItem) (string, error)
 	Enrich(Page, []ExtractedItem) ([]ExtractedItem, error)
-}
-type JSONFetcher interface {
-	FetchJSON(context.Context, string, []byte) (FetchResult, error)
 }
 
 func (p Poller) enrichChanges(ctx context.Context, flow Flow, changes []ExtractedItem) ([]ExtractedItem, error) {
@@ -24,39 +22,19 @@ func (p Poller) enrichChanges(ctx context.Context, flow Flow, changes []Extracte
 	if !ok {
 		return changes, nil
 	}
-	for start := 0; start < len(changes); start += 50 {
-		end := min(start+50, len(changes))
-		batch := changes[start:end]
-		url, body, err := enriched.EnrichmentRequest(batch)
+	for batch := range slices.Chunk(changes, 50) {
+		url, err := enriched.EnrichmentURL(batch)
 		if err != nil {
 			return nil, err
 		}
 		if url == "" {
 			continue
 		}
-		if err := p.beforeSecondaryFetch(ctx, url); err != nil {
-			return nil, err
-		}
-		var result FetchResult
-		if body == nil {
-			result, err = p.Fetcher.Fetch(ctx, url, FetchCache{})
-		} else {
-			fetcher, ok := p.Fetcher.(JSONFetcher)
-			if !ok {
-				return nil, fmt.Errorf("fetcher does not support JSON metadata queries")
-			}
-			result, err = fetcher.FetchJSON(ctx, url, body)
-		}
+		page, err := p.fetchFollowUp(ctx, url, "metadata")
 		if err != nil {
 			return nil, err
 		}
-		if result.Status == FetchThrottled {
-			return nil, &fetchThrottle{result.RetryAfter}
-		}
-		if result.Status != FetchModified {
-			return nil, fmt.Errorf("metadata unavailable (status %d)", result.Status)
-		}
-		items, err := enriched.Enrich(result.Page, batch)
+		items, err := enriched.Enrich(page, batch)
 		if err != nil {
 			return nil, err
 		}
@@ -152,20 +130,11 @@ func (p Poller) resolveAnnouncementIdentities(ctx context.Context, sourceID stri
 
 // resolveIdentity fetches one identity page and lets the Flow read it.
 func (p Poller) resolveIdentity(ctx context.Context, resolver AnnouncementIdentityFlow, url string, item ExtractedItem) (ExtractedItem, error) {
-	if err := p.beforeSecondaryFetch(ctx, url); err != nil {
-		return ExtractedItem{}, err
-	}
-	result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+	page, err := p.fetchFollowUp(ctx, url, "announcement identity")
 	if err != nil {
 		return ExtractedItem{}, err
 	}
-	if result.Status == FetchThrottled {
-		return ExtractedItem{}, &fetchThrottle{result.RetryAfter}
-	}
-	if result.Status != FetchModified {
-		return ExtractedItem{}, fmt.Errorf("announcement identity unavailable (status %d)", result.Status)
-	}
-	return resolver.ResolveIdentity(result.Page, item)
+	return resolver.ResolveIdentity(page, item)
 }
 
 // enrichAnnouncements resolves metadata for newly announced items before they
@@ -216,18 +185,9 @@ func (p Poller) enrichAnnouncements(ctx context.Context, sourceID string, flow F
 // fetchAnnouncement fetches one announcement's metadata page and lets the Flow
 // decode it.
 func (p Poller) fetchAnnouncement(ctx context.Context, flow EnrichedAnnouncementFlow, url string, item ExtractedItem) (ExtractedItem, error) {
-	if err := p.beforeSecondaryFetch(ctx, url); err != nil {
-		return ExtractedItem{}, err
-	}
-	result, err := p.Fetcher.Fetch(ctx, url, FetchCache{})
+	page, err := p.fetchFollowUp(ctx, url, "announcement metadata")
 	if err != nil {
 		return ExtractedItem{}, err
 	}
-	if result.Status == FetchThrottled {
-		return ExtractedItem{}, &fetchThrottle{result.RetryAfter}
-	}
-	if result.Status != FetchModified {
-		return ExtractedItem{}, fmt.Errorf("announcement metadata unavailable (status %d)", result.Status)
-	}
-	return flow.EnrichAnnouncement(result.Page, item)
+	return flow.EnrichAnnouncement(page, item)
 }

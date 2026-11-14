@@ -38,21 +38,9 @@ func (p Poller) extractPages(ctx context.Context, source Source, flow PaginatedF
 			query := base.Query()
 			query.Set("page", strconv.Itoa(number))
 			base.RawQuery = query.Encode()
-			target := base.String()
-			if err := p.beforeSecondaryFetch(ctx, target); err != nil {
+			if page, err = p.fetchFollowUp(ctx, base.String(), fmt.Sprintf("page %d of %s", number, source.ID)); err != nil {
 				return nil, err
 			}
-			fetched, err := p.Fetcher.Fetch(ctx, target, FetchCache{})
-			if err != nil {
-				return nil, err
-			}
-			if fetched.Status == FetchThrottled {
-				return nil, &fetchThrottle{fetched.RetryAfter}
-			}
-			if fetched.Status != FetchModified {
-				return nil, fmt.Errorf("page %d of %s unavailable (status %d)", number, source.ID, fetched.Status)
-			}
-			page = fetched.Page
 		}
 		current, err := flow.Pagination(page)
 		if err != nil {

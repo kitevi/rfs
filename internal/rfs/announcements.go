@@ -84,18 +84,7 @@ func (p Poller) pollAnnouncements(ctx context.Context, source Source, flow Annou
 		if announcement.GUID == "" {
 			return PollResult{}, fmt.Errorf("poll %s: announcement without a GUID", source.ID)
 		}
-		pubDate := p.now()
-		if announcement.PubDate != nil {
-			pubDate = *announcement.PubDate
-		}
-		items = append(items, Item{
-			GUID:        announcement.GUID,
-			Title:       announcement.Title,
-			Link:        announcement.Link,
-			Description: announcement.Description,
-			Metadata:    announcement.Metadata,
-			PubDate:     pubDate,
-		})
+		items = append(items, announcement.item(announcement.pubDateOr(p.now())))
 	}
 	cache.ExtractVersion = flow.Version()
 	if err := store.CommitAnnouncements(commitContext(ctx), source.ID, decision.Checkpoint, items, cache); err != nil {

@@ -21,7 +21,7 @@ func ValidateSource(source Source) error {
 		return fmt.Errorf("source %s: URL %q is not an absolute HTTP(S) URL", source.ID, source.URL)
 	}
 	_, announces := source.Flow.(AnnouncementFlow)
-	compares := comparesChanges(source.Flow)
+	_, compares := source.Flow.(ChangeFlow)
 	if announces && compares {
 		return fmt.Errorf("source %s: flow cannot both announce and compare changes", source.ID)
 	}
