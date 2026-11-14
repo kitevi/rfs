@@ -160,7 +160,7 @@ type carriedCell struct {
 func alignCells(cells []*html.Node, columnCount int, spans map[int]carriedCell) []*html.Node {
 	aligned := make([]*html.Node, columnCount)
 	cellIndex := 0
-	for column := 0; column < columnCount; column++ {
+	for column := range columnCount {
 		if carried, ok := spans[column]; ok {
 			aligned[column] = carried.node
 			carried.rowsLeft--

@@ -49,10 +49,10 @@ func TestPollerDatesItemsFromTheirPagesOnce(t *testing.T) {
 	defer store.Close()
 
 	now := time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC)
-	fetcher := &datedFetcher{urlFetcher: urlFetcher{pages: map[string]Page{
+	fetcher := &datedFetcher{pages: map[string]Page{
 		"https://example.com/index":   Page("<index>"),
 		"https://example.com/nervous": Page("2026-08-28T00:00:00Z"),
-	}}}
+	}}
 	recorder := &secondaryRecorder{}
 	source := Source{ID: "essays", URL: "https://example.com/index", Flow: datedStub{items: []ExtractedItem{datedItem("nervous")}}}
 	poller := Poller{Fetcher: fetcher, Store: store, Clock: fixedClock{now: now}, SecondaryFetch: recorder.guard}
@@ -98,13 +98,12 @@ func TestPollerFallsBackToFirstSeenAndRetriesAnUnreadablePage(t *testing.T) {
 	defer store.Close()
 
 	now := time.Date(2026, 10, 22, 15, 0, 0, 0, time.UTC)
-	fetcher := &datedFetcher{urlFetcher: urlFetcher{
+	fetcher := &datedFetcher{
 		pages: map[string]Page{
 			"https://example.com/index":  Page("<index>"),
 			"https://example.com/advice": Page("2026-09-05T00:00:00Z"),
 		},
-		err: map[string]error{"https://example.com/nervous": errors.New("connection reset")},
-	}}
+		err: map[string]error{"https://example.com/nervous": errors.New("connection reset")}}
 	source := Source{ID: "essays", URL: "https://example.com/index", Flow: datedStub{items: []ExtractedItem{datedItem("nervous"), datedItem("advice")}}}
 	poller := Poller{Fetcher: fetcher, Store: store, Clock: fixedClock{now: now}}
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"html"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -769,9 +770,7 @@ func TestPollAnnouncesStandaloneTrackAndSkipsTheResolvedPlayerNextTime(t *testin
 		t.Fatal("a track from an announced album was published again")
 	}
 	hits := map[string]int{}
-	for url, count := range fetcher.hits {
-		hits[url] = count
-	}
+	maps.Copy(hits, fetcher.hits)
 	if _, err := poller.Poll(ctx, source); err != nil {
 		t.Fatal(err)
 	}

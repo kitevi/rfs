@@ -86,8 +86,8 @@ func animeID(href string) (string, bool) {
 		return match[1], true
 	}
 	for _, prefix := range []string{"https://myanimelist.net", "http://myanimelist.net"} {
-		if strings.HasPrefix(href, prefix) {
-			match = animePath.FindStringSubmatch(strings.TrimPrefix(href, prefix))
+		if after, ok := strings.CutPrefix(href, prefix); ok {
+			match = animePath.FindStringSubmatch(after)
 			if len(match) == 2 {
 				return match[1], true
 			}

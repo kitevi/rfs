@@ -226,7 +226,7 @@ func normalizeLines(text string) []string {
 	text = strings.ReplaceAll(text, "\r", "\n")
 	text = strings.ReplaceAll(text, "\u00a0", " ")
 	lines := []string{}
-	for _, raw := range strings.Split(text, "\n") {
+	for raw := range strings.SplitSeq(text, "\n") {
 		line := strings.Join(strings.Fields(raw), " ")
 		if line == "" {
 			if len(lines) > 0 && lines[len(lines)-1] != "" {

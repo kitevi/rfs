@@ -58,10 +58,7 @@ func pollCycleDetails(sources []rfs.Source) string {
 
 func logNextPollCycle(started time.Time, interval time.Duration, sources []rfs.Source) {
 	next := started.Add(interval)
-	remaining := time.Until(next).Round(time.Second)
-	if remaining < 0 {
-		remaining = 0
-	}
+	remaining := max(time.Until(next).Round(time.Second), 0)
 	log.Printf("next poll cycle in %s at %s (%s)", remaining, next.Format("15:04:05"), pollCycleDetails(sources))
 }
 
@@ -195,10 +192,7 @@ func main() {
 
 	var pollLoops sync.WaitGroup
 	for _, schedule := range pollSchedules {
-		schedule := schedule
-		pollLoops.Add(1)
-		go func() {
-			defer pollLoops.Done()
+		pollLoops.Go(func() {
 			loop := rfs.Loop{
 				Poll: func(ctx context.Context) {
 					started := time.Now()
@@ -208,7 +202,7 @@ func main() {
 				Interval: schedule.interval,
 			}
 			loop.Run(ctx)
-		}()
+		})
 	}
 	pollsDone := make(chan struct{})
 	go func() {
@@ -282,14 +276,11 @@ func gateGuard(gate *rfs.DomainGate) func(context.Context, string) error {
 func pollAll(ctx context.Context, sources []rfs.Source, poller rfs.Poller, gate *rfs.DomainGate) {
 	var wg sync.WaitGroup
 	for _, source := range sources {
-		source := source
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			if err := pollOne(ctx, source, poller, gate); err != nil {
 				log.Printf("poll %s: %v", source.ID, err)
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

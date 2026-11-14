@@ -71,10 +71,9 @@ func TestPollerSpacesIdentityFetches(t *testing.T) {
 	defer store.Close()
 
 	recorder := &secondaryRecorder{}
-	flow := &rewriteFlow{announcementTestFlow: announcementTestFlow{
+	flow := &rewriteFlow{
 		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
-		version: 1,
-	}}
+		version: 1}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
 	fetcher := urlFetcher{pages: map[string]Page{
 		source.URL:                     Page("<page>"),

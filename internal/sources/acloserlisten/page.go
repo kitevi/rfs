@@ -131,7 +131,7 @@ func embeddedRelease(src string) (release, bool) {
 	var albumID, trackID string
 	sawAlbum := false
 	trackInvalid := false
-	for _, segment := range strings.Split(parsed.Path, "/") {
+	for segment := range strings.SplitSeq(parsed.Path, "/") {
 		if value, ok := strings.CutPrefix(segment, "album="); ok {
 			sawAlbum = true
 			id, err := canonicalID(value)

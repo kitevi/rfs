@@ -129,7 +129,7 @@ func (f Flow) title(sub, description string) string {
 		return subject
 	}
 	var first, edition string
-	for _, line := range strings.Split(description, "\n") {
+	for line := range strings.SplitSeq(description, "\n") {
 		line = f.stripThreadName(line)
 		if line == "" || fold(line) == fold(f.Name) {
 			continue
@@ -185,10 +185,7 @@ func (f Flow) extractThread(t catalogThread) (rfs.ExtractedItem, bool) {
 	}
 	title := f.title(t.Sub, description)
 	pubDate := time.Unix(t.Time, 0).UTC()
-	replies := t.Replies
-	if replies < 0 {
-		replies = 0
-	}
+	replies := max(t.Replies, 0)
 	raw, _ := json.Marshal(t) // catalogThread contains only JSON-safe fields.
 	return rfs.ExtractedItem{
 		Metadata:    string(raw),
@@ -238,7 +235,7 @@ func normalizeText(raw string) string {
 
 	var lines []string
 	blank := false
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		line = strings.Join(strings.Fields(line), " ")
 		if line == "" {
 			if len(lines) > 0 && !blank {

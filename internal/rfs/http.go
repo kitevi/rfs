@@ -56,10 +56,7 @@ func (h HTTPHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var items []Item
 	var err error
 	if source.History != nil {
-		minLive := source.History.MinLiveReplies
-		if minLive < 0 {
-			minLive = 0
-		}
+		minLive := max(source.History.MinLiveReplies, 0)
 		limit := source.History.VisibleLimit
 		if limit <= 0 {
 			limit = 10

@@ -213,8 +213,7 @@ func TestUpdateMonitorDefaultsToTenMinuteChecks(t *testing.T) {
 func TestUpdateMonitorReportsAppliedUpdateOnce(t *testing.T) {
 	checker := &fakeUpdateChecker{result: UpdateCheckResult{Current: "0.1.0", Latest: "0.2.0", Applied: true}}
 	monitor := newUpdateMonitor(checker, UpdateMonitorConfig{CheckInterval: time.Hour, CheckTimeout: time.Second})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	events := monitor.Run(ctx)
 	select {
@@ -248,8 +247,7 @@ func TestUpdateMonitorTimesOutCheckWithoutCancellingItsLifetime(t *testing.T) {
 		return UpdateCheckResult{}, ctx.Err()
 	})
 	monitor := newUpdateMonitor(checker, UpdateMonitorConfig{CheckInterval: time.Hour, CheckTimeout: 20 * time.Millisecond})
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	select {
 	case event := <-monitor.Run(ctx):

@@ -12,8 +12,7 @@ import (
 // is dropped from this observation and retried on the next poll rather than
 // blocking every other item the source carries.
 func quarantinable(err error) bool {
-	var throttle *fetchThrottle
-	if errors.As(err, &throttle) {
+	if _, ok := errors.AsType[*fetchThrottle](err); ok {
 		return false
 	}
 	return !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded)

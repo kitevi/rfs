@@ -126,10 +126,9 @@ func TestDatedAnnouncementFlowUsesThePollerClock(t *testing.T) {
 	defer store.Close()
 
 	now := time.Date(2026, 10, 16, 22, 0, 0, 0, time.UTC)
-	flow := &datedAnnouncementFlow{announcementTestFlow: announcementTestFlow{
+	flow := &datedAnnouncementFlow{
 		items:   []ExtractedItem{announcementItem("film:1")},
-		version: 1,
-	}}
+		version: 1}
 	source := Source{ID: "dated", URL: "https://example.com/films", Flow: flow}
 	poller := Poller{Fetcher: emissionFetcher{}, Store: store, Clock: fixedClock{now: now}}
 	if _, err := poller.Poll(ctx, source); err != nil {
@@ -326,10 +325,9 @@ func TestAnnouncementIdentityIsResolvedBeforeEvaluate(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	flow := &rewriteFlow{announcementTestFlow: announcementTestFlow{
+	flow := &rewriteFlow{
 		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
-		version: 1,
-	}}
+		version: 1}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
 	fetcher := urlFetcher{pages: map[string]Page{
 		source.URL:                     Page("<page>"),
@@ -354,10 +352,9 @@ func TestAnnouncementIdentityFailureQuarantinesOnlyThatItem(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer store.Close()
-	flow := &rewriteFlow{announcementTestFlow: announcementTestFlow{
+	flow := &rewriteFlow{
 		items:   []ExtractedItem{announcementItem("album:1"), announcementItem("track:9")},
-		version: 1,
-	}}
+		version: 1}
 	source := Source{ID: "announcements", URL: "https://example.com/archive", Flow: flow}
 	fetcher := &urlFetcher{
 		pages: map[string]Page{source.URL: Page("<page>"), "https://players.test/track:9": Page("album:1")},

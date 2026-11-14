@@ -95,8 +95,7 @@ func TestLoopCutsAPollAtItsTimeout(t *testing.T) {
 	}
 	loop := Loop{Poll: poll, Interval: time.Hour, PollTimeout: 50 * time.Millisecond}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go loop.Run(ctx)
 
 	select {
@@ -119,8 +118,7 @@ func TestLoopPollTimeoutDefaultsToInterval(t *testing.T) {
 		}
 		remaining <- time.Until(deadline)
 	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	go Loop{Poll: poll, Interval: time.Hour}.Run(ctx)
 
 	got := <-remaining
