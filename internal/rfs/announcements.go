@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -152,7 +153,7 @@ func evaluateAnnouncements(flow AnnouncementFlow, at time.Time, checkpoint json.
 func (s *SQLiteStore) LoadAnnouncementCheckpoint(ctx context.Context, sourceID string) (json.RawMessage, error) {
 	var checkpoint []byte
 	err := s.db.QueryRowContext(ctx, `SELECT checkpoint FROM announcement_state WHERE source_id = ?`, sourceID).Scan(&checkpoint)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -166,24 +167,13 @@ func (s *SQLiteStore) LoadAnnouncementCheckpoint(ctx context.Context, sourceID s
 // ignored rather than updated, so an announcement's text is immutable once
 // published and a replayed decision cannot duplicate a feed entry.
 func (s *SQLiteStore) CommitAnnouncements(ctx context.Context, sourceID string, checkpoint json.RawMessage, items []Item, cache FetchCache) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer rollbackUnlessCommitted(tx)
-	for _, item := range items {
-		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO snapshots (source_id, guid, title, link, description, pub_date, replies, metadata) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Replies, item.Metadata)
-		if err != nil {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := writeItems(ctx, tx, insertNewItem, sourceID, items); err != nil {
 			return err
 		}
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO announcement_state (source_id, checkpoint) VALUES (?, ?) ON CONFLICT(source_id) DO UPDATE SET checkpoint=excluded.checkpoint`, sourceID, []byte(checkpoint))
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO fetch_cache (source_id, etag, last_modified, extract_version) VALUES (?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET etag=excluded.etag, last_modified=excluded.last_modified, extract_version=excluded.extract_version`, sourceID, cache.ETag, cache.LastModified, cache.ExtractVersion)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO announcement_state (source_id, checkpoint) VALUES (?, ?) ON CONFLICT(source_id) DO UPDATE SET checkpoint=excluded.checkpoint`, sourceID, []byte(checkpoint)); err != nil {
+			return err
+		}
+		return saveFetchCache(ctx, tx, sourceID, cache)
+	})
 }

@@ -3,6 +3,7 @@ package rfs
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -99,7 +100,7 @@ func (p Poller) fetchItemDate(ctx context.Context, flow DatedItemFlow, item Extr
 func (s *SQLiteStore) LoadItemDate(ctx context.Context, sourceID, guid string) (time.Time, bool, error) {
 	var value string
 	err := s.db.QueryRowContext(ctx, `SELECT pub_date FROM item_dates WHERE source_id = ? AND guid = ?`, sourceID, guid).Scan(&value)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return time.Time{}, false, nil
 	}
 	if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 )
@@ -90,7 +91,7 @@ func (s *SQLiteStore) LoadChangeState(ctx context.Context, sourceID string) (Cha
 	var state ChangeState
 	var data []byte
 	err := s.db.QueryRowContext(ctx, `SELECT baseline, version, revision FROM change_state WHERE source_id = ?`, sourceID).Scan(&data, &state.Version, &state.Revision)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return state, nil
 	}
 	if err != nil {
@@ -110,24 +111,13 @@ func (s *SQLiteStore) SaveChanges(ctx context.Context, sourceID string, state Ch
 	if err != nil {
 		return err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer rollbackUnlessCommitted(tx)
-	for _, item := range items {
-		_, err = tx.ExecContext(ctx, `INSERT INTO snapshots (source_id, guid, title, link, description, pub_date, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)`, sourceID, item.GUID, item.Title, item.Link, item.Description, formatStoreTime(item.PubDate), item.Metadata)
-		if err != nil {
+	return s.inTx(ctx, func(tx *sql.Tx) error {
+		if err := writeItems(ctx, tx, insertItem, sourceID, items); err != nil {
 			return err
 		}
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO change_state (source_id, baseline, version, revision) VALUES (?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET baseline=excluded.baseline, version=excluded.version, revision=excluded.revision`, sourceID, data, state.Version, state.Revision)
-	if err != nil {
-		return err
-	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO fetch_cache (source_id, etag, last_modified, extract_version) VALUES (?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET etag=excluded.etag, last_modified=excluded.last_modified, extract_version=excluded.extract_version`, sourceID, cache.ETag, cache.LastModified, cache.ExtractVersion)
-	if err != nil {
-		return err
-	}
-	return tx.Commit()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO change_state (source_id, baseline, version, revision) VALUES (?, ?, ?, ?) ON CONFLICT(source_id) DO UPDATE SET baseline=excluded.baseline, version=excluded.version, revision=excluded.revision`, sourceID, data, state.Version, state.Revision); err != nil {
+			return err
+		}
+		return saveFetchCache(ctx, tx, sourceID, cache)
+	})
 }

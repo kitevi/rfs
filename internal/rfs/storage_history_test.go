@@ -3,6 +3,7 @@ package rfs
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"testing"
 	"time"
 
@@ -131,7 +132,7 @@ func TestMergeHistoryPrunesBeyondStoredLimitButNeverLive(t *testing.T) {
 	// Seed 12 dead threads + 1 live = 13 rows, keepStored=11 keeps newest 11 incl live.
 	var seed []Item
 	for i := 12; i >= 1; i-- {
-		seed = append(seed, historyItem("ptg:"+itoa(i), i, 200))
+		seed = append(seed, historyItem("ptg:"+strconv.Itoa(i), i, 200))
 	}
 	if err := store.MergeHistory(ctx, "ptg", seed, []string{"ptg:1"}, 11); err != nil {
 		t.Fatalf("seed merge: %v", err)
