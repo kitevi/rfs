@@ -3,6 +3,7 @@ package sources
 import (
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources/acloserlisten"
+	"github.com/kitevi/rfs/internal/sources/boomkat"
 	"github.com/kitevi/rfs/internal/sources/catalog"
 	"github.com/kitevi/rfs/internal/sources/cittafiera"
 	"github.com/kitevi/rfs/internal/sources/coached"
@@ -15,6 +16,16 @@ import (
 
 func All() []rfs.Source {
 	return []rfs.Source{
+		{
+			ID:  "boomkat-record-of-the-week",
+			URL: boomkat.PageURL,
+			Meta: rfs.SourceMeta{
+				Title:       "Boomkat Record Of The Week",
+				Description: "The release Boomkat's homepage flags as Record Of The Week, announced once per release.",
+				Link:        boomkat.HumanURL,
+			},
+			Flow: boomkat.Flow{},
+		},
 		{
 			ID:  "citta-fiera",
 			URL: cittafiera.PageURL,

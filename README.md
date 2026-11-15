@@ -33,6 +33,8 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/visionario.html` — HTML view of the films
 - `/feeds/citta-fiera.xml` — new films at Cine Città Fiera
 - `/feeds/citta-fiera.html` — HTML view of the films
+- `/feeds/boomkat-record-of-the-week.xml` — Boomkat's Record Of The Week
+- `/feeds/boomkat-record-of-the-week.html` — HTML view of the Record Of The Week
 
 ### SeaDex
 
@@ -213,6 +215,36 @@ To verify live access and parsing without touching your database:
 
 ```sh
 RFS_TEST_CITTAFIERA_LIVE=1 go test ./internal/sources/cittafiera -run TestLive -v -count=1
+```
+
+### Boomkat Record Of The Week
+
+`/feeds/boomkat-record-of-the-week.xml` (or `.html`) publishes the release that
+the boomkat.com homepage flags as Record Of The Week. That is one release. The
+weekly roundup's Records of the Week is a different list, of about ten, and is
+not read. The block is found by its flag text, not its layout, so a new
+homepage template does not lose it.
+
+Each pick is announced once, when rfs first sees it flagged, and stays in the
+feed after the homepage moves on. The first successful poll announces the
+current pick. Identity is Boomkat's release ID, not the release URL, so a
+renamed release or a pick that comes back is not announced again. The title is
+the artist and the release title, and the link is the release page. The
+description is the block's own text: the formats line and the review excerpt,
+for example `Download, Vinyl — A killer second suite of asymmetric dream
+architecture…`. The feed date is when rfs first saw the pick.
+
+A homepage without the flag, or a flagged block that links more than one
+release or has lost its artist or title, fails the poll and leaves the feed
+untouched.
+
+boomkat.com's Cloudflare front challenges Go's own TLS handshake whatever the
+request says, so this feed depends on rfs opening its connections with
+Chrome's (see Fetching). To verify live access and parsing without touching
+your database:
+
+```sh
+RFS_TEST_BOOMKAT_LIVE=1 go test ./internal/sources/boomkat -run TestLive -v -count=1
 ```
 
 ## Fetching
