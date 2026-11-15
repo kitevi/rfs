@@ -1,8 +1,5 @@
 # Stateful recommendation diffs with complete collection fetches
 
-> **Status: amended by 0015.** Enrichment is one GET per batch; the JSON POST
-> alternative is removed.
-
 Amends ADR 0001 for Sources whose Flow implements `ChangeFlow`. Existing
 projection and catalog-history Sources keep their current behavior.
 
@@ -52,13 +49,11 @@ text diffs preserve line order and repetitions and trim common leading/trailing
 lines. Only changed sections are emitted. Descriptions contain escaped text with
 HTML headings, preformatted `-`/`+` lines and optional colors.
 
-`EnrichedChangeFlow` describes read-only JSON metadata queries; rfs performs
-batched requests (up to 50 changed items) through the same HTTP client. SeaDex
-uses SeaDex's public `anilist` collection via GET for titles and cover URLs.
-A nil enrichment request body selects GET; non-nil bodies retain JSON POST.
-The original direct AniList POST returned HTTP 403 on this host, preventing
-all changed polls from committing. The SeaDex-hosted cache was verified live;
-no blocked endpoint is bypassed.
+`EnrichedChangeFlow` names one read-only GET URL for a batch of up to 50
+changed items (`EnrichmentURL`), and rfs fetches it through the same client
+(0002). SeaDex uses SeaDex's public `anilist` collection for titles and cover
+URLs. A direct AniList POST returned HTTP 403 on this host, which kept every
+changed poll from committing; the SeaDex-hosted collection was verified live.
 No metadata requests are made for the baseline or unchanged polls. A failed
 query preserves the pending change for retry. Missing titles fall back to
 AniList IDs; missing/invalid cover URLs are ignored. rfs never fetches images.
@@ -74,7 +69,7 @@ plain-text descriptions. RSS description content uses normal XML escaping.
   descriptions or guarantee notifications for edits to existing items.
 - Poll only the newest entries: can silently omit older edited relations and
   deletions; fetch the entire collection instead.
-- Let a Flow fetch pages or keep its own in-memory baseline: violates ADRs 0002
-  and 0005, and loses state on restart.
-- Scrape Discord or bypass API access blocks: not needed for this design and not
-  implemented. Normal API access must be available on the deployed host.
+- Let a Flow fetch pages or keep its own in-memory baseline: violates ADR 0002,
+  and loses state on restart.
+- Scrape Discord: not needed for this design. Normal API access must be
+  available on the deployed host.

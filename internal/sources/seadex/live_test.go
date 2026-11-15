@@ -2,7 +2,6 @@ package seadex_test
 
 import (
 	"context"
-	"net/http"
 	"os"
 	"testing"
 	"time"
@@ -20,7 +19,7 @@ func TestLiveSeaDex(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	store := rfstest.Store(t)
-	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(&http.Client{Timeout: 30 * time.Second}), Store: store}
+	p := rfs.Poller{Fetcher: rfs.NewHTTPFetcher(nil), Store: store}
 	for _, source := range sources.All() {
 		if source.ID != "seadex" {
 			continue

@@ -38,7 +38,7 @@ copied.
   Pruning reads the live set it has just written instead of receiving it as
   parameters.
 - **Flows share their HTML helpers.** Attribute, class, text and element
-  lookups live in `internal/dom`. `rfs.ParseHTML` (0005) stays where it is.
+  lookups live in `internal/dom`. `rfs.ParseHTML` (0002) stays where it is.
   Helpers that encode one page's rules, such as Meltzer's cell text, stay with
   their Flow.
 - **Feeds are routed by `net/http` patterns.** `GET /{$}` and
@@ -61,8 +61,8 @@ copied.
 
 ## Consequences
 
-- `go.mod` requires two modules directly, `golang.org/x/net` and
-  `modernc.org/sqlite`, and 11 in total instead of 28.
+- `go.mod` went from 28 modules to 11, two of them direct:
+  `golang.org/x/net` and `modernc.org/sqlite`.
 - rfs depends on the shape of GitHub's releases JSON. An opt-in probe runs the
   production workflow against the real feed with a fake swapper:
   `RFS_TEST_SELFUPDATE_LIVE=1 go test ./internal/rfs -run TestLiveSelfUpdate -v -count=1`.

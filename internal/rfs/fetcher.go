@@ -45,7 +45,10 @@ const maxFetchBodyBytes int64 = 16 << 20
 // it, and every follow-up request inside a poll needs the same bound.
 const defaultFetchTimeout = 30 * time.Second
 
-var defaultHTTPClient = &http.Client{Timeout: defaultFetchTimeout}
+// defaultHTTPClient is the client every Source is fetched with: each request
+// is bounded by defaultFetchTimeout and opens its connection with Chrome's TLS
+// handshake (chromeTransport).
+var defaultHTTPClient = &http.Client{Timeout: defaultFetchTimeout, Transport: newChromeTransport()}
 
 // userAgent identifies rfs to every upstream it contacts.
 const userAgent = "rfs/0.1 (+https://github.com/kitevi/rfs)"

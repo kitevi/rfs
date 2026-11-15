@@ -47,7 +47,6 @@ requested only for changed anime. No direct AniList API access is required
 (the previous implementation's AniList POST returned HTTP 403 on this host).
 Missing titles fall back to AniList IDs; unsafe cover URLs are skipped.
 Failed pages or metadata queries preserve the baseline and feed for retry.
-HTTP access blocks are reported, not bypassed.
 
 An empty feed after the first poll is expected: it is waiting for future changes,
 not reconstructing past Discord messages. To verify live fetching and metadata
@@ -108,9 +107,9 @@ This is an **observed-change feed**: edits made and reverted between polls canno
 be recovered, and item dates are discovery times, not upstream edit times. An
 unrecognized, incomplete, or paginated page fails closed, so a temporary layout
 change or access block preserves the baseline and feed for retry instead of
-publishing false removals. Access blocks are reported, not bypassed. History is
-retained without automatic pruning, and extraction-version upgrades silently
-rebaseline rather than publishing code-induced changes.
+publishing false removals. History is retained without automatic pruning, and
+extraction-version upgrades silently rebaseline rather than publishing
+code-induced changes.
 
 To verify live access and parsing without touching your database:
 
@@ -215,6 +214,21 @@ To verify live access and parsing without touching your database:
 ```sh
 RFS_TEST_CITTAFIERA_LIVE=1 go test ./internal/sources/cittafiera -run TestLive -v -count=1
 ```
+
+## Fetching
+
+rfs fetches every Source, and every follow-up page a Flow asks for, with one
+HTTP client. Each request carries rfs's own User-Agent over a connection opened
+with Chrome's TLS handshake: CDNs such as Cloudflare challenge Go's own
+handshake whatever the request says. rfs does not solve challenges, run page
+scripts or send a browser's User-Agent. A site that still refuses rfs fails
+its polls, the log says why, and the feed keeps what it had.
+
+Requests to one domain are spaced by `-domain-spacing` (10 seconds), a
+throttling answer backs the domain off, each request has 30 seconds, and a
+response over 16 MiB fails the poll. Self-update keeps Go's own TLS, since it
+runs what it downloads. Source requests do not use `HTTP_PROXY` or
+`HTTPS_PROXY`. See `docs/adr/0002-rfs-fetches-flow-extracts.md`.
 
 ## Storage
 

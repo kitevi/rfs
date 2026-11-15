@@ -1,6 +1,6 @@
 # Shutdown cancels polls; commits do not observe cancellation
 
-Amends 0004 and 0012.
+Amends 0004.
 
 A poll cycle ran under one fixed two-minute deadline, on a context independent
 of the shutdown signal. Every source in a cycle shared it, and the domain gate
@@ -31,7 +31,7 @@ remaining paced requests.
   commit is already a single transaction (0008, 0010).
 - **The cycle deadline defaults to the poll interval.** It only has to stop a
   cycle from running into the next one. Each request still has its own 30-second
-  client timeout (0012), so a stalled connection cannot consume it.
+  client timeout (0002), so a stalled connection cannot consume it.
 
 ## Considered options
 

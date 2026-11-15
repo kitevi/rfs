@@ -1,17 +1,16 @@
 // Package rfstest holds the helpers Flow tests share: an in-memory store, a
-// feed reader, a fixture loader and a live page fetch. It is imported only
-// from tests; rfs's own tests cannot use it because it imports rfs.
+// feed reader, a fixture loader and a live page fetch through rfs's client.
+// It is imported only from tests; rfs's own tests cannot use it because it
+// imports rfs.
 package rfstest
 
 import (
 	"encoding/xml"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
 )
@@ -65,21 +64,16 @@ func Fixture(t testing.TB, name string) rfs.Page {
 	return page
 }
 
-// FetchLive fetches one upstream page for an opt-in live probe.
+// FetchLive fetches one upstream page for an opt-in live probe through the
+// client rfs polls with, so a probe passes only where rfs itself would.
 func FetchLive(t testing.TB, pageURL string) rfs.Page {
 	t.Helper()
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(pageURL)
+	result, err := rfs.NewHTTPFetcher(nil).Fetch(t.Context(), pageURL, rfs.FetchCache{})
 	if err != nil {
 		t.Fatalf("fetch %s: %v", pageURL, err)
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("fetch %s: status %s", pageURL, resp.Status)
+	if result.Status != rfs.FetchModified {
+		t.Fatalf("fetch %s: status %d, want the page", pageURL, result.Status)
 	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
-	if err != nil {
-		t.Fatalf("read %s: %v", pageURL, err)
-	}
-	return body
+	return result.Page
 }

@@ -1,11 +1,9 @@
 package acloserlisten
 
 import (
-	"net/http"
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/kitevi/rfs/internal/rfs"
 )
@@ -19,7 +17,7 @@ func TestLiveRecommendations(t *testing.T) {
 	if os.Getenv("RFS_TEST_ACLOSERLISTEN_LIVE") == "" {
 		t.Skip("set RFS_TEST_ACLOSERLISTEN_LIVE=1")
 	}
-	fetcher := rfs.NewHTTPFetcher(&http.Client{Timeout: 30 * time.Second})
+	fetcher := rfs.NewHTTPFetcher(nil)
 	page, err := fetcher.Fetch(t.Context(), PageURL, rfs.FetchCache{})
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +60,7 @@ func TestLiveOctoberRecommendations(t *testing.T) {
 		t.Skip("set RFS_TEST_ACLOSERLISTEN_LIVE=1")
 	}
 	flow := Flow{}
-	fetcher := rfs.NewHTTPFetcher(&http.Client{Timeout: 30 * time.Second})
+	fetcher := rfs.NewHTTPFetcher(nil)
 	page, err := fetcher.Fetch(t.Context(), PageURL, rfs.FetchCache{})
 	if err != nil {
 		t.Fatal(err)

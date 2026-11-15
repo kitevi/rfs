@@ -160,6 +160,9 @@ func TestNewHTTPFetcherUsesAClientWithATimeout(t *testing.T) {
 	if fetcher.client.Timeout <= 0 {
 		t.Fatalf("default client timeout = %s, want a bounded request timeout", fetcher.client.Timeout)
 	}
+	if _, ok := fetcher.client.Transport.(*chromeTransport); !ok {
+		t.Fatalf("default client transport = %T, want Chrome's handshake", fetcher.client.Transport)
+	}
 }
 
 func TestHTTPFetcherReportsThrottlingWithRetryAfter(t *testing.T) {
