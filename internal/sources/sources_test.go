@@ -7,7 +7,6 @@ import (
 	"github.com/kitevi/rfs/internal/rfs"
 	"github.com/kitevi/rfs/internal/sources"
 	"github.com/kitevi/rfs/internal/sources/acloserlisten"
-	"github.com/kitevi/rfs/internal/sources/boomkat"
 	"github.com/kitevi/rfs/internal/sources/catalog"
 	"github.com/kitevi/rfs/internal/sources/cittafiera"
 	"github.com/kitevi/rfs/internal/sources/coached"
@@ -37,16 +36,11 @@ type sourceCheck struct {
 func yes() *bool { value := true; return &value }
 func no() *bool  { value := false; return &value }
 
-// TestAll pins the whole registry: the exact set of twelve Sources, each one's
+// TestAll pins the whole registry: the exact set of eleven Sources, each one's
 // URLs, metadata and capabilities, and that rfs.ValidateSources accepts it the
 // way startup does.
 func TestAll(t *testing.T) {
 	want := map[string]sourceCheck{
-		"boomkat-record-of-the-week": {
-			url: boomkat.PageURL, link: boomkat.HumanURL,
-			version: boomkat.ExtractVersion, html: no(),
-			announce: true, plain: true,
-		},
 		"citta-fiera": {
 			url: cittafiera.PageURL, link: cittafiera.HumanURL,
 			title: "Cine Città Fiera", version: cittafiera.ExtractVersion, html: no(),

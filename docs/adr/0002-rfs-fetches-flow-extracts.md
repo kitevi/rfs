@@ -90,6 +90,10 @@ Source reads the WordPress API.
   each, and rfs keeps no connection pool.
 - Source requests ignore `HTTP_PROXY` and `HTTPS_PROXY`; self-update still
   honours them.
+- The handshake does not help when a CDN distrusts the server's address. From
+  the deployed host boomkat.com answers 403 over IPv4 and IPv6 even to curl
+  with Chrome's User-Agent, so the Boomkat Source that prompted this was
+  removed; rfs does not route around address blocks.
 - Opt-in live probes fetch through this client (`rfstest.FetchLive`,
   `rfs.NewHTTPFetcher(nil)`), so a probe passes only where rfs would.
 - Flows are tested against saved bodies and fake fetchers; the client is tested
