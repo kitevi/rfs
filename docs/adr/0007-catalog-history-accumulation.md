@@ -37,9 +37,11 @@ behaviour without archive traffic (which was blocking us).
   successful observation preserves the stored live set rather than clearing it.
 - `ExtractVersion` bumped for the parser change (`ptg` 3→4, `film` 2→3) and
   again when titles began omitting the thread name (`ptg` 4→5, `film` 3→4),
-  and when titles began naming the edition line rather than the opening line,
+  when titles began naming the edition line rather than the opening line,
   skipping the general's banner and greentext boilerplate (`ptg` 6→7,
-  `film` 5→6).
+  `film` 5→6), and when descriptions stopped repeating the general (`ptg`
+  7→8: its standing links, rules and reminders and the previous-thread
+  pointer) and the title (the banner and the edition line), `film` 6→7.
 - A version bump alone cannot refresh accumulated rows absent from the catalog.
   `HistoryRebuilder` re-derives them from saved flow-owned inputs. `CommitHistory`
   includes this rebuild, the current merge, pruning, and the fetch/version

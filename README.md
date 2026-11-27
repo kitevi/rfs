@@ -34,6 +34,21 @@ By default the server listens on `:14298` and Sources poll every hour unless the
 - `/feeds/citta-fiera.xml` — new films at Cine Città Fiera
 - `/feeds/citta-fiera.html` — HTML view of the films
 
+### Private Trackers General and Arthouse & Classics
+
+`/feeds/ptg.xml` and `/feeds/film.xml` publish the opening post of each
+recurring general thread they observe, named after the thread's `edition`. The
+catalog lists live threads only, so rfs keeps the last ten it has seen and serves
+a live thread once it has 100 replies. A dead thread's link keeps working through
+an archive-redirect extension.
+
+An opening post's description is only what the thread itself says. The parts
+that every thread repeats — the general's links, rules and reminders, and the
+pointer to the previous thread — are left out, as are the banner and the edition
+line the title already carries. A poster who rewrites those parts gets the whole
+opening post instead: showing the general's rules twice costs less than
+swallowing what someone wrote.
+
 ### SeaDex
 
 The first successful complete poll silently establishes a baseline. Subsequent

@@ -1,6 +1,7 @@
 package catalog_test
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -54,7 +55,7 @@ type catalogCase struct {
 
 var cases = []catalogCase{
 	{
-		name: "film", flow: catalog.Film, version: 6,
+		name: "film", flow: catalog.Film, version: 7,
 		live: liveThread{
 			page: `[{"page":1,"threads":[{"no":222965645,"sub":"/film/","com":"Arthouse &amp; Classics<br><br>Guiltydition","time":1788463410}]}]`,
 			guid: "film:222965645", link: "https://boards.4chan.org/tv/thread/222965645/",
@@ -76,7 +77,7 @@ var cases = []catalogCase{
 		onlyInvalid: `[{"page":1,"threads":[{"no":222965645,"sub":"/film/","time":1788463410}]}]`,
 		fragment: comFragment{
 			page:        `[{"page":1,"threads":[{"no":221573858,"sub":"/film/","com":"Thread for the discussion of arthouse and classic cinema.<br><br>Don Carlo edition<br><span class=\"quote\">&gt;QOTD</span><br>What did you watch this week? <a href=\"https://example.com/chart\">chart</a>","time":1788463410}]}]`,
-			description: "Thread for the discussion of arthouse and classic cinema.\n\nDon Carlo edition\n>QOTD\nWhat did you watch this week? chart",
+			description: "Thread for the discussion of arthouse and classic cinema.\n\n>QOTD\nWhat did you watch this week? chart",
 			title:       "Arthouse & Classics \u2014 Don Carlo edition",
 		},
 		rebuild: []rebuildCase{
@@ -86,7 +87,7 @@ var cases = []catalogCase{
 		},
 	},
 	{
-		name: "ptg", flow: catalog.PTG, version: 7,
+		name: "ptg", flow: catalog.PTG, version: 8,
 		live: liveThread{
 			page: `[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","com":"the tummies remain private Edition<br>FAQ: https://example.com","time":1788200342}]}]`,
 			guid: "ptg:109697201", link: "https://boards.4chan.org/g/thread/109697201/",
@@ -108,7 +109,7 @@ var cases = []catalogCase{
 		onlyInvalid: `[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","time":1788200342}]}]`,
 		fragment: comFragment{
 			page:        `[{"page":1,"threads":[{"no":109697201,"sub":"/ptg/ - Private Trackers General","com":"RED edition<br><br><span class=\"quote\">&gt;Not sure what private trackers are?</span><br>A private tracker is an invite-only site. FAQ<wbr>_link &amp; friends <a href=\"//boards.4chan.org/g/catalog#s=ptg\" class=\"quotelink\">&gt;&gt;&gt;/g/ptg</a>","time":1788200342}]}]`,
-			description: "RED edition\n\n>Not sure what private trackers are?\nA private tracker is an invite-only site. FAQ_link & friends >>>/g/ptg",
+			description: ">Not sure what private trackers are?\nA private tracker is an invite-only site. FAQ_link & friends >>>/g/ptg",
 			title:       "Private Trackers General \u2014 RED edition",
 		},
 		rebuild: []rebuildCase{
@@ -251,4 +252,111 @@ func TestCatalogTitlesNameTheEdition(t *testing.T) {
 			t.Errorf("sub %q com %q: title = %q, want %q", c.sub, c.com, items[0].Title, c.wantTitle)
 		}
 	}
+}
+
+// A ptg opening post repeats the general's links and rules in every thread,
+// names the previous thread at the end, and repeats its own edition. The feed
+// item carries none of them: what stays is the news and whatever else the
+// poster wrote.
+func TestPTGDescriptionsKeepOnlyTheThreadsOwnText(t *testing.T) {
+	const (
+		standingStart = `<span class="quote">&gt;Not sure what private trackers are all about?</span><br>A private tracker is an invite-only torrent website.`
+		standingRules = `<br><span class="quote">&gt;READ THE OP</span><br><span class="quote">&gt;Don&#039;t ask for invites</span>`
+		standingEnd   = `<br><span class="quote">&gt;If starting out you should interview for RED, rank to Torrent Master, wait on account age, and get invites from there. THAT&#039;S IT THAT IS ALL YOU HAVE TO DO</span>`
+		previous      = `<br><br>Previous thread: <a href="/g/thread/110362431#p110362431" class="quotelink">&gt;&gt;110362431</a>`
+	)
+	const standing = standingStart + standingRules + standingEnd
+	tests := []struct {
+		name, com, want string
+	}{
+		{
+			name: "news survives the boilerplate",
+			com:  `No pedo edition<br><br>` + standing + `<br><br>NEWS<br><a href="/g/thread/110362431#p110369071" class="quotelink">&gt;&gt;110369071</a> oldtoons confirmed a honeypot` + previous,
+			want: "NEWS\n>>110369071 oldtoons confirmed a honeypot",
+		},
+		{
+			name: "a bare edition is the title alone",
+			com:  `Pool edition<br><br>` + standing + previous,
+			want: "",
+		},
+		{
+			name: "a poster's own greentext after the block is kept",
+			com:  `Pool edition<br><br>` + standing + `<br><br>&gt;inb4 lock`,
+			want: ">inb4 lock",
+		},
+		{
+			name: "an opener without the block keeps its greentext",
+			com:  `Pool edition<br><br>&gt;Not sure what private trackers are?<br>A private tracker is an invite-only site.`,
+			want: ">Not sure what private trackers are?\nA private tracker is an invite-only site.",
+		},
+		{
+			name: "a half-rewritten block is not cut at all",
+			com:  `Pool edition<br><br>` + standingStart + standingRules + `<br><br>and one more rule` + previous,
+			want: ">Not sure what private trackers are all about?\nA private tracker is an invite-only torrent website.\n>READ THE OP\n>Don't ask for invites\n\nand one more rule",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			page := catalogJSON(t, map[string]any{
+				"no": 110402817, "sub": "/ptg/ Private Trackers General", "com": tc.com, "time": 1788200342,
+			})
+			items, err := catalog.PTG.Extract(page)
+			if err != nil {
+				t.Fatalf("Extract returned error: %v", err)
+			}
+			if items[0].Description != tc.want {
+				t.Fatalf("description = %q, want %q", items[0].Description, tc.want)
+			}
+		})
+	}
+}
+
+// The general's news lines open with the post they discuss. The pointer is
+// part of the news, so it stays; a lone pointer line says nothing and goes.
+func TestPTGNewsKeepsItsText(t *testing.T) {
+	page := catalogJSON(t, map[string]any{
+		"no": 110402817, "sub": "/ptg/ Private Trackers General",
+		"com":  "No pedo edition<br><br>NEWS<br><a href=\"/g/thread/110362431#p110369071\" class=\"quotelink\">&gt;&gt;110369071</a> oldtoons confirmed a honeypot<br><a href=\"/g/thread/110362431#p110372270\" class=\"quotelink\">&gt;&gt;110372270</a><br><br>Previous thread: <a href=\"/g/thread/110362431#p110362431\" class=\"quotelink\">&gt;&gt;110362431</a>",
+		"time": 1788200342,
+	})
+	items, err := catalog.PTG.Extract(page)
+	if err != nil {
+		t.Fatalf("Extract returned error: %v", err)
+	}
+	if want := "NEWS\n>>110369071 oldtoons confirmed a honeypot"; items[0].Description != want {
+		t.Fatalf("description = %q, want %q", items[0].Description, want)
+	}
+}
+
+// Rebuilding a stored ptg row runs the same stripping, so a version bump
+// rewrites accumulated descriptions instead of serving the old paste.
+func TestPTGRebuildStripsTheStandingBlock(t *testing.T) {
+	const standing = `<span class="quote">&gt;Not sure what private trackers are all about?</span><br>A private tracker is an invite-only torrent website.<br><span class="quote">&gt;READ THE OP</span><br><span class="quote">&gt;Don&#039;t ask for invites</span><br><span class="quote">&gt;If starting out you should interview for RED, rank to Torrent Master, wait on account age, and get invites from there. THAT&#039;S IT THAT IS ALL YOU HAVE TO DO</span>`
+	metadata, err := json.Marshal(map[string]any{
+		"no": 110402817, "sub": "/ptg/ Private Trackers General",
+		"com": "Pool edition<br><br>" + standing, "time": 1788200342,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := catalog.PTG.RebuildStored(rfs.Item{GUID: "ptg:110402817", Title: "stale", Description: "stale", Metadata: string(metadata)})
+	if err != nil {
+		t.Fatalf("RebuildStored returned error: %v", err)
+	}
+	if got.Description != "" {
+		t.Fatalf("description = %q, want the standing block gone", got.Description)
+	}
+	if want := "Private Trackers General \u2014 Pool edition"; got.Title != want {
+		t.Fatalf("title = %q, want %q", got.Title, want)
+	}
+}
+
+// catalogJSON wraps one catalog thread in the page shape the board API serves.
+func catalogJSON(t *testing.T, thread map[string]any) rfs.Page {
+	t.Helper()
+	page, err := json.Marshal([]map[string]any{{"page": 1, "threads": []map[string]any{thread}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return rfs.Page(page)
 }
